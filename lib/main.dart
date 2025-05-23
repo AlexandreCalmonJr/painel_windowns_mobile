@@ -86,15 +86,22 @@ class Device {
 
 // Device Service
 class DeviceService {
-  Future<List<Device>> fetchDevices(String ip, String port) async {
+  Future<List<Device>> fetchDevices(String ip, String port, String token) async {
     final url = 'http://$ip:$port/api/devices';
     try {
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 15));
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((json) => Device.fromJson(json)).toList();
+      } else if (response.statusCode == 401) {
+        throw Exception('Erro 401: Token de autenticação inválido ou ausente.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Erro 403: Acesso negado. Verifique o token.');
       } else {
         throw Exception(
             'Erro ${response.statusCode}: ${response.reasonPhrase ?? "Erro desconhecido na API"}');
@@ -149,6 +156,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
   // Default connection settings
   String serverIp = '10.71.2.112';
   String serverPort = '3000';
+  String token = ''; // Authentication token
 
   @override
   void initState() {
@@ -169,7 +177,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
     });
 
     try {
-      final fetchedDevices = await _deviceService.fetchDevices(serverIp, serverPort);
+      final fetchedDevices = await _deviceService.fetchDevices(serverIp, serverPort, token);
       setState(() {
         devices = fetchedDevices;
         isLoading = false;
@@ -456,7 +464,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Conexão com servidor falhou. Exibindo dados de demonstração.',
+                    errorMessage ?? 'Conexão com servidor falhou. Exibindo dados de demonstração.',
                     style: TextStyle(color: Colors.orange[800]),
                   ),
                 ),
@@ -928,14 +936,27 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   });
                 },
               ),
+              SizedBox(height: 10),
+              TextField(
+                decoration: InputDecoration(
+                  labelText: 'Authentication Token',
+                  border: OutlineInputBorder(),
+                  hintText: 'Enter your auth token',
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    token = value;
+                  });
+                },
+              ),
               SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _loadDevices,
-                child: Text('Save & Refresh'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                 ),
+                child: Text('Save & Refresh'),
               ),
             ],
           ),
