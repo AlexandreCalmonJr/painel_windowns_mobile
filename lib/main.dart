@@ -9,6 +9,8 @@ import 'package:process/process.dart';
 
 // Constants
 const Duration kOnlineTolerance = Duration(minutes: 15);
+const int kMaxRetries = 3;
+const Duration kRetryDelay = Duration(seconds: 2);
 
 // Utility functions
 DateTime? parseLastSeen(dynamic lastSeen) {
@@ -23,7 +25,6 @@ bool isDeviceOnline(DateTime? seenTime, {Duration tolerance = kOnlineTolerance})
   if (seenTime == null) return false;
   final now = DateTime.now();
   final difference = now.difference(seenTime).abs();
-  print('Device lastSeen: $seenTime, Now: $now, Difference: $difference');
   return difference <= tolerance;
 }
 
@@ -33,7 +34,8 @@ String formatDateTime(DateTime? dateTime) {
 }
 
 class Device {
-  final String? deviceName;
+  final String? id;
+  final String? deviceId;
   final String? deviceModel;
   final num? battery;
   final String? ipAddress;
@@ -42,9 +44,15 @@ class Device {
   final String? imei;
   final String? macAddress;
   final String? lastSeen;
+  final String? lastSync;
+  final String? sector;
+  final String? floor;
+
+  String get deviceName => '${sector ?? 'N/A'}${floor ?? 'N/A'}';
 
   Device({
-    this.deviceName,
+    this.id,
+    this.deviceId,
     this.deviceModel,
     this.battery,
     this.ipAddress,
@@ -53,25 +61,33 @@ class Device {
     this.imei,
     this.macAddress,
     this.lastSeen,
+    this.lastSync,
+    this.sector,
+    this.floor,
   });
 
   factory Device.fromJson(Map<String, dynamic> json) {
     return Device(
-      deviceName: json['device_name'] as String?,
+      id: json['_id'] as String?,
+      deviceId: json['device_id'] as String?,
       deviceModel: json['device_model'] as String?,
-      battery: json['battery'] as num?,
+      battery: (json['battery'] is num) ? json['battery'] : null,
       ipAddress: json['ip_address'] as String?,
       network: json['network'] as String?,
       serialNumber: json['serial_number'] as String?,
       imei: json['imei'] as String?,
       macAddress: json['mac_address'] as String?,
       lastSeen: json['last_seen'] as String?,
+      lastSync: json['last_sync'] as String?,
+      sector: json['sector'] as String?,
+      floor: json['floor'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'device_name': deviceName,
+      '_id': id,
+      'device_id': deviceId,
       'device_model': deviceModel,
       'battery': battery,
       'ip_address': ipAddress,
@@ -80,46 +96,111 @@ class Device {
       'imei': imei,
       'mac_address': macAddress,
       'last_seen': lastSeen,
+      'last_sync': lastSync,
+      'sector': sector,
+      'floor': floor,
     };
   }
 }
 
-// Device Service
 class DeviceService {
   Future<List<Device>> fetchDevices(String ip, String port, String token) async {
     final url = 'http://$ip:$port/api/devices';
-    try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 15));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.map((json) => Device.fromJson(json)).toList();
-      } else if (response.statusCode == 401) {
-        throw Exception('Erro 401: Token de autenticação inválido ou ausente.');
-      } else if (response.statusCode == 403) {
-        throw Exception('Erro 403: Acesso negado. Verifique o token.');
-      } else {
-        throw Exception(
-            'Erro ${response.statusCode}: ${response.reasonPhrase ?? "Erro desconhecido na API"}');
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http.get(
+          Uri.parse(url),
+          headers: {'Authorization': 'Bearer $token'},
+        ).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data is List) {
+            return data.map((json) => Device.fromJson(json as Map<String, dynamic>)).toList();
+          }
+          throw Exception('Resposta inválida: Esperado uma lista de dispositivos.');
+        } else if (response.statusCode == 401) {
+          throw Exception('Erro 401: Token de autenticação inválido ou ausente.');
+        } else if (response.statusCode == 403) {
+          throw Exception('Erro 403: Acesso negado. Verifique o token.');
+        } else {
+          throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase ?? "Erro desconhecido na API"}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão: Tempo limite esgotado após $kMaxRetries tentativas.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException catch (e) {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão: Verifique o IP/Porta e a rede. ($e)');
+        }
+        await Future.delayed(kRetryDelay);
+      } on FormatException {
+        throw Exception('Erro ao processar resposta: Formato inválido.');
+      } catch (e) {
+        throw Exception('Falha inesperada: $e');
       }
-    } on TimeoutException {
-      throw Exception('Falha na conexão: Tempo limite esgotado.');
-    } on SocketException catch (e) {
-      throw Exception('Falha na conexão: Verifique o IP/Porta e a rede. ($e)');
-    } on FormatException {
-      throw Exception('Erro ao processar resposta: Formato inválido.');
-    } catch (e) {
-      throw Exception('Falha inesperada: $e');
     }
+    return [];
+  }
+
+  Future<String> sendCommand(String ip, String port, String token, String deviceId, String command, Map<String, String> parameters) async {
+    if (deviceId.isEmpty) {
+      throw Exception('ID do dispositivo é obrigatório.');
+    }
+    final url = 'http://$ip:$port/api/executeCommand';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http.post(
+          Uri.parse(url),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'device_id': deviceId,
+            'command': command,
+            ...parameters,
+          }),
+        ).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return data['message'] as String? ?? 'Comando enviado com sucesso';
+        } else if (response.statusCode == 401) {
+          throw Exception('Erro 401: Token de autenticação inválido ou ausente.');
+        } else if (response.statusCode == 403) {
+          throw Exception('Erro 403: Acesso negado. Verifique o token.');
+        } else {
+          throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase ?? "Erro desconhecido na API"}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão: Tempo limite esgotado após $kMaxRetries tentativas.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException catch (e) {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão: Verifique o IP/Porta e a rede. ($e)');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Falha ao enviar comando: $e');
+      }
+    }
+    throw Exception('Falha ao enviar comando após $kMaxRetries tentativas.');
   }
 }
 
 void main() {
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -133,7 +214,7 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         scaffoldBackgroundColor: Colors.grey[50],
       ),
-      home: MDMDashboard(),
+      home: const MDMDashboard(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -152,22 +233,39 @@ class _MDMDashboardState extends State<MDMDashboard> {
   bool isLoading = false;
   String? errorMessage;
   final DeviceService _deviceService = DeviceService();
-  
-  // Default connection settings
+  Timer? _refreshTimer;
+
+  // Connection settings
   String serverIp = '10.71.2.112';
   String serverPort = '3000';
-  String token = ''; // Authentication token
+  String token = '';
+
+  // Text controllers for settings
+  late TextEditingController _ipController;
+  late TextEditingController _portController;
+  late TextEditingController _tokenController;
 
   @override
   void initState() {
     super.initState();
+    _ipController = TextEditingController(text: serverIp);
+    _portController = TextEditingController(text: serverPort);
+    _tokenController = TextEditingController(text: token);
     _loadDevices();
-    // Setup periodic refresh every 15 seconds
-    Timer.periodic(Duration(seconds: 15), (timer) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
       if (mounted) {
         _loadDevices();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _ipController.dispose();
+    _portController.dispose();
+    _tokenController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadDevices() async {
@@ -196,11 +294,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
     int atRiskDevices = 0;
     int compliantDevices = 0;
 
-    for (Device device in devices) {
-      DateTime? lastSeenTime = parseLastSeen(device.lastSeen);
-      bool online = isDeviceOnline(lastSeenTime);
-      
-      if (online && (device.battery ?? 0) > 20) {
+    for (final device in devices) {
+      final lastSeenTime = parseLastSeen(device.lastSeen);
+      final online = isDeviceOnline(lastSeenTime);
+      final battery = device.battery?.toDouble() ?? 0;
+
+      if (online && battery > 20) {
         secureDevices++;
         compliantDevices++;
       } else {
@@ -216,9 +315,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
     };
   }
 
-  // Generate and save CSV file
   Future<void> _downloadDevicesCsv() async {
-    // Define CSV headers
     final headers = [
       'Dispositivo',
       'Model',
@@ -229,15 +326,14 @@ class _MDMDashboardState extends State<MDMDashboard> {
       'Bateria',
       'Endereço IP',
       'Rede',
-      'Endereço MAC'
+      'Endereço MAC',
     ];
 
-    // Convert devices to CSV rows
     final rows = devices.map((device) {
       final lastSeenTime = parseLastSeen(device.lastSeen);
       final online = isDeviceOnline(lastSeenTime);
       return [
-        device.deviceName ?? 'N/A',
+        device.deviceName,
         device.deviceModel ?? 'N/A',
         device.imei ?? 'N/A',
         device.serialNumber ?? 'N/A',
@@ -250,52 +346,70 @@ class _MDMDashboardState extends State<MDMDashboard> {
       ].map((value) => '"${value.toString().replaceAll('"', '""')}"').join(',');
     }).toList();
 
-    // Combine headers and rows
-    final csvContent = [
-      headers.join(','),
-      ...rows,
-    ].join('\n');
+    final csvContent = [headers.join(','), ...rows].join('\n');
 
-    // Save to Documents folder
     try {
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final path = '${directory.path}\\devices_$timestamp.csv';
+      final path = '${directory.path}${Platform.pathSeparator}devices_$timestamp.csv';
       final file = File(path);
       await file.writeAsString(csvContent);
-      // Show dialog with file location and option to open folder
+
+      if (!mounted) return;
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('CSV Salvo'),
+          title: const Text('CSV Salvo'),
           content: Text('O arquivo CSV foi salvo em:\n$path'),
           actions: [
             TextButton(
               onPressed: () async {
-                // Open the containing folder
-                final processManager = LocalProcessManager();
-                await processManager.run(['explorer.exe', '/select,"$path"']);
-                Navigator.of(context).pop();
+                try {
+                  final processManager = LocalProcessManager();
+                  if (Platform.isWindows) {
+                    await processManager.run(['explorer.exe', '/select,"$path"']);
+                  } else {
+                    throw Exception('Plataforma não suportada para abrir pasta.');
+                  }
+                  if (!mounted) return;
+                  Navigator.of(context).pop();
+                } catch (e) {
+                  if (!mounted) return;
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Erro'),
+                      content: Text('Falha ao abrir pasta: $e'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
               },
-              child: Text('Abrir Pasta'),
+              child: const Text('Abrir Pasta'),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK'),
+              child: const Text('OK'),
             ),
           ],
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('Erro'),
+          title: const Text('Erro'),
           content: Text('Falha ao salvar o CSV: $e'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK'),
+              child: const Text('OK'),
             ),
           ],
         ),
@@ -306,20 +420,18 @@ class _MDMDashboardState extends State<MDMDashboard> {
   @override
   Widget build(BuildContext context) {
     final stats = _getDeviceStats();
-    
+
     return Scaffold(
       body: Row(
         children: [
-          // Sidebar
           Container(
             width: 200,
-            color: Color(0xFF2D3748),
+            color: const Color(0xFF2D3748),
             child: Column(
               children: [
-                // Header
                 Container(
-                  padding: EdgeInsets.all(20),
-                  child: Text(
+                  padding: const EdgeInsets.all(20),
+                  child: const Text(
                     'MDM Control',
                     style: TextStyle(
                       color: Colors.white,
@@ -328,7 +440,6 @@ class _MDMDashboardState extends State<MDMDashboard> {
                     ),
                   ),
                 ),
-                // Menu Items
                 Expanded(
                   child: ListView(
                     children: [
@@ -346,14 +457,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
               ],
             ),
           ),
-          // Main Content
           Expanded(
             child: Column(
               children: [
-                // Top Bar
                 Container(
                   height: 60,
-                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     boxShadow: [
@@ -361,13 +470,13 @@ class _MDMDashboardState extends State<MDMDashboard> {
                         color: Colors.grey.withOpacity(0.1),
                         spreadRadius: 1,
                         blurRadius: 3,
-                        offset: Offset(0, 1),
+                        offset: const Offset(0, 1),
                       ),
                     ],
                   ),
                   child: Row(
                     children: [
-                      Text(
+                      const Text(
                         'MDM Control',
                         style: TextStyle(
                           color: Colors.blue,
@@ -375,33 +484,32 @@ class _MDMDashboardState extends State<MDMDashboard> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      Spacer(),
+                      const Spacer(),
                       if (isLoading)
-                        SizedBox(
+                        const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                      SizedBox(width: 15),
+                      const SizedBox(width: 15),
                       IconButton(
                         icon: Icon(Icons.refresh, color: Colors.grey[600]),
                         onPressed: _loadDevices,
                       ),
                       Icon(Icons.notifications, color: Colors.grey[600]),
-                      SizedBox(width: 15),
+                      const SizedBox(width: 15),
                       Icon(Icons.settings, color: Colors.grey[600]),
-                      SizedBox(width: 15),
-                      CircleAvatar(
+                      const SizedBox(width: 15),
+                      const CircleAvatar(
                         backgroundColor: Colors.blue,
                         child: Text('AD', style: TextStyle(color: Colors.white)),
                       ),
                     ],
                   ),
                 ),
-                // Tab Content
                 Expanded(
                   child: Padding(
-                    padding: EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(20),
                     child: _buildTabContent(),
                   ),
                 ),
@@ -451,8 +559,8 @@ class _MDMDashboardState extends State<MDMDashboard> {
         ),
         if (errorMessage != null)
           Container(
-            margin: EdgeInsets.only(top: 10),
-            padding: EdgeInsets.all(10),
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: Colors.orange[50],
               border: Border.all(color: Colors.orange),
@@ -460,48 +568,44 @@ class _MDMDashboardState extends State<MDMDashboard> {
             ),
             child: Row(
               children: [
-                Icon(Icons.warning, color: Colors.orange),
-                SizedBox(width: 10),
+                const Icon(Icons.warning, color: Colors.orange),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    errorMessage ?? 'Conexão com servidor falhou. Exibindo dados de demonstração.',
+                    errorMessage!,
                     style: TextStyle(color: Colors.orange[800]),
                   ),
                 ),
               ],
             ),
           ),
-        SizedBox(height: 20),
-        // Stats Cards
+        const SizedBox(height: 20),
         Row(
           children: [
             Expanded(child: _buildStatCard('Total Devices', '${stats['total']}', Icons.smartphone, Colors.blue)),
-            SizedBox(width: 15),
+            const SizedBox(width: 15),
             Expanded(child: _buildStatCard('Secure', '${stats['secure']}', Icons.check_circle, Colors.green)),
-            SizedBox(width: 15),
+            const SizedBox(width: 15),
             Expanded(child: _buildStatCard('At Risk', '${stats['atRisk']}', Icons.warning, Colors.orange)),
-            SizedBox(width: 15),
+            const SizedBox(width: 15),
             Expanded(child: _buildStatCard('Compliant', '${stats['compliant']}', Icons.verified, Colors.purple)),
           ],
         ),
-        SizedBox(height: 30),
-        // Main Content Row
+        const SizedBox(height: 30),
         Expanded(
           child: Row(
             children: [
-              // Managed Devices Table
               Expanded(
                 flex: 2,
                 child: _buildManagedDevicesCard(),
               ),
-              SizedBox(width: 20),
-              // Sidebar with Alerts and Server Status
+              const SizedBox(width: 20),
               SizedBox(
                 width: 300,
                 child: Column(
                   children: [
                     _buildRecentAlertsCard(),
-                    SizedBox(height: 20),
+                    const SizedBox(height: 20),
                     _buildServerStatusCard(),
                   ],
                 ),
@@ -525,7 +629,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey[800],
           ),
         ),
-        SizedBox(height: 20),
+        const SizedBox(height: 20),
         Expanded(
           child: _buildManagedDevicesCard(),
         ),
@@ -545,9 +649,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey[800],
           ),
         ),
-        SizedBox(height: 20),
+        const SizedBox(height: 20),
         Container(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
@@ -556,7 +660,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 color: Colors.grey.withOpacity(0.1),
                 spreadRadius: 1,
                 blurRadius: 6,
-                offset: Offset(0, 2),
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -571,12 +675,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   color: Colors.grey[800],
                 ),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               Text('Server IP: $serverIp'),
               Text('Server Port: $serverPort'),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               _buildServerMetric('CPU Usage', 42),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
               _buildServerMetric('Memory Usage', 68),
             ],
           ),
@@ -597,9 +701,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey[800],
           ),
         ),
-        SizedBox(height: 20),
+        const SizedBox(height: 20),
         Container(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
@@ -608,7 +712,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 color: Colors.grey.withOpacity(0.1),
                 spreadRadius: 1,
                 blurRadius: 6,
-                offset: Offset(0, 2),
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -623,9 +727,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   color: Colors.grey[800],
                 ),
               ),
-              SizedBox(height: 20),
-              Text('Password Policy: Enabled'),
-              Text('Encryption: AES-256'),
+              const SizedBox(height: 20),
+              const Text('Password Policy: Enabled'),
+              const Text('Encryption: AES-256'),
               Text('Last Security Scan: ${formatDateTime(DateTime.now())}'),
             ],
           ),
@@ -646,9 +750,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey[800],
           ),
         ),
-        SizedBox(height: 20),
+        const SizedBox(height: 20),
         Container(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
@@ -657,7 +761,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 color: Colors.grey.withOpacity(0.1),
                 spreadRadius: 1,
                 blurRadius: 6,
-                offset: Offset(0, 2),
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -674,11 +778,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
                       color: Colors.grey[800],
                     ),
                   ),
-                  Spacer(),
+                  const Spacer(),
                   ElevatedButton.icon(
                     onPressed: () {},
-                    icon: Icon(Icons.add, size: 16),
-                    label: Text('Add User'),
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Add User'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -687,9 +791,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   ),
                 ],
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               Table(
-                columnWidths: {
+                columnWidths: const {
                   0: FlexColumnWidth(2),
                   1: FlexColumnWidth(2),
                   2: FlexColumnWidth(1),
@@ -705,19 +809,18 @@ class _MDMDashboardState extends State<MDMDashboard> {
                       _buildTableHeader('Status'),
                     ],
                   ),
-                  // Placeholder user data
                   TableRow(
                     children: [
-                      Padding(
+                      const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                         child: Text('John Doe', style: TextStyle(fontSize: 14)),
                       ),
-                      Padding(
+                      const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                         child: Text('Admin', style: TextStyle(fontSize: 14)),
                       ),
                       Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                         child: Text('Active', style: TextStyle(fontSize: 14, color: Colors.green)),
                       ),
                     ],
@@ -743,9 +846,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey[800],
           ),
         ),
-        SizedBox(height: 20),
+        const SizedBox(height: 20),
         Container(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
@@ -754,7 +857,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 color: Colors.grey.withOpacity(0.1),
                 spreadRadius: 1,
                 blurRadius: 6,
-                offset: Offset(0, 2),
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -769,9 +872,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   color: Colors.grey[800],
                 ),
               ),
-              SizedBox(height: 20),
-              Text('Device Compliance Report: Available'),
-              Text('Security Incidents: 0'),
+              const SizedBox(height: 20),
+              const Text('Device Compliance Report: Available'),
+              const Text('Security Incidents: 0'),
               Text('Last Generated: ${formatDateTime(DateTime.now())}'),
             ],
           ),
@@ -781,21 +884,21 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Widget _buildAlertsTab() {
-    List<Map<String, dynamic>> alerts = [];
-    for (Device device in devices) {
-      DateTime? lastSeenTime = parseLastSeen(device.lastSeen);
-      bool online = isDeviceOnline(lastSeenTime);
-      
+    final alerts = <Map<String, dynamic>>[];
+    for (final device in devices) {
+      final lastSeenTime = parseLastSeen(device.lastSeen);
+      final online = isDeviceOnline(lastSeenTime);
+
       if (!online) {
         alerts.add({
           'icon': Icons.warning,
           'title': 'Device Offline',
-          'subtitle': '${device.deviceName} - ${device.deviceModel}',
+          'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
           'time': formatDateTime(lastSeenTime),
           'color': Colors.orange,
         });
       }
-      
+
       if ((device.battery ?? 100) < 20) {
         alerts.add({
           'icon': Icons.battery_alert,
@@ -818,10 +921,10 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey[800],
           ),
         ),
-        SizedBox(height: 20),
+        const SizedBox(height: 20),
         Expanded(
           child: Container(
-            padding: EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
@@ -830,7 +933,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   color: Colors.grey.withOpacity(0.1),
                   spreadRadius: 1,
                   blurRadius: 6,
-                  offset: Offset(0, 2),
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -845,7 +948,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                     color: Colors.grey[800],
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 Expanded(
                   child: alerts.isEmpty
                       ? Center(
@@ -856,12 +959,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
                         )
                       : ListView(
                           children: alerts.map((alert) => _buildAlertItem(
-                            alert['icon'],
-                            alert['title'],
-                            alert['subtitle'],
-                            alert['time'],
-                            alert['color'],
-                          )).toList(),
+                                alert['icon'] as IconData,
+                                alert['title'] as String,
+                                alert['subtitle'] as String,
+                                alert['time'] as String,
+                                alert['color'] as Color,
+                              )).toList(),
                         ),
                 ),
               ],
@@ -884,9 +987,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey[800],
           ),
         ),
-        SizedBox(height: 20),
+        const SizedBox(height: 20),
         Container(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
@@ -895,7 +998,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 color: Colors.grey.withOpacity(0.1),
                 spreadRadius: 1,
                 blurRadius: 6,
-                offset: Offset(0, 2),
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -910,53 +1013,56 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   color: Colors.grey[800],
                 ),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               TextField(
-                decoration: InputDecoration(
+                controller: _ipController,
+                decoration: const InputDecoration(
                   labelText: 'Server IP',
                   border: OutlineInputBorder(),
-                  hintText: serverIp,
+                  hintText: '10.71.2.112',
                 ),
                 onChanged: (value) {
                   setState(() {
-                    serverIp = value;
+                    serverIp = value.trim();
                   });
                 },
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               TextField(
-                decoration: InputDecoration(
+                controller: _portController,
+                decoration: const InputDecoration(
                   labelText: 'Server Port',
                   border: OutlineInputBorder(),
-                  hintText: serverPort,
+                  hintText: '3000',
                 ),
                 onChanged: (value) {
                   setState(() {
-                    serverPort = value;
+                    serverPort = value.trim();
                   });
                 },
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               TextField(
-                decoration: InputDecoration(
+                controller: _tokenController,
+                decoration: const InputDecoration(
                   labelText: 'Authentication Token',
                   border: OutlineInputBorder(),
                   hintText: 'Enter your auth token',
                 ),
                 onChanged: (value) {
                   setState(() {
-                    token = value;
+                    token = value.trim();
                   });
                 },
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _loadDevices,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                 ),
-                child: Text('Save & Refresh'),
+                child: const Text('Save & Refresh'),
               ),
             ],
           ),
@@ -966,9 +1072,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Widget _buildMenuItem(IconData icon, String title, int index) {
-    bool isSelected = selectedIndex == index;
+    final isSelected = selectedIndex == index;
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       decoration: BoxDecoration(
         color: isSelected ? Colors.blue : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
@@ -977,7 +1083,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
         leading: Icon(icon, color: Colors.white70, size: 20),
         title: Text(
           title,
-          style: TextStyle(color: Colors.white70, fontSize: 14),
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
         ),
         onTap: () {
           setState(() {
@@ -990,7 +1096,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -999,7 +1105,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 6,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1015,11 +1121,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   fontSize: 14,
                 ),
               ),
-              Spacer(),
+              const Spacer(),
               Icon(icon, color: color, size: 20),
             ],
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Text(
             value,
             style: TextStyle(
@@ -1035,7 +1141,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
 
   Widget _buildManagedDevicesCard() {
     return Container(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -1044,7 +1150,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 6,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1061,11 +1167,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   color: Colors.grey[800],
                 ),
               ),
-              Spacer(),
+              const Spacer(),
               ElevatedButton.icon(
                 onPressed: _downloadDevicesCsv,
-                icon: Icon(Icons.download, size: 16),
-                label: Text('Baixar CSV'),
+                icon: const Icon(Icons.download, size: 16),
+                label: const Text('Baixar CSV'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
@@ -1074,21 +1180,20 @@ class _MDMDashboardState extends State<MDMDashboard> {
               ),
             ],
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           Expanded(
             child: SingleChildScrollView(
               child: Table(
-                columnWidths: {
+                columnWidths: const {
                   0: FlexColumnWidth(2),
                   1: FlexColumnWidth(2),
                   2: FlexColumnWidth(2),
                   3: FlexColumnWidth(2),
                   4: FlexColumnWidth(1.5),
                   5: FlexColumnWidth(2),
-                  6: FlexColumnWidth(0.5),
+                  6: FlexColumnWidth(3),
                 },
                 children: [
-                  // Header
                   TableRow(
                     decoration: BoxDecoration(
                       border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
@@ -1100,10 +1205,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                       _buildTableHeader('Serial'),
                       _buildTableHeader('Status'),
                       _buildTableHeader('Ultima Sincronização'),
-                      _buildTableHeader(''),
+                      _buildTableHeader('Ações'),
                     ],
                   ),
-                  // Data rows from API/Demo data
                   ...devices.map((device) => _buildDeviceRowFromDevice(device)),
                 ],
               ),
@@ -1114,129 +1218,22 @@ class _MDMDashboardState extends State<MDMDashboard> {
     );
   }
 
-  Widget _buildTableHeader(String text) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: Colors.grey[600],
-          fontSize: 12,
-        ),
-      ),
-    );
-  }
-
-  TableRow _buildDeviceRowFromDevice(Device device) {
-    DateTime? lastSeenTime = parseLastSeen(device.lastSeen);
-    bool online = isDeviceOnline(lastSeenTime);
-    String status = online ? 'Online' : 'Offline';
-    Color statusColor = online ? Colors.green : Colors.red;
-    
-    // Determine device icon based on device name/model
-    IconData deviceIcon = Icons.smartphone;
-    if (device.deviceName?.toLowerCase().contains('iphone') == true) {
-      deviceIcon = Icons.phone_iphone;
-    } else if (device.deviceName?.toLowerCase().contains('ipad') == true) {
-      deviceIcon = Icons.tablet_mac;
-    } else if (device.deviceName?.toLowerCase().contains('laptop') == true || 
-               device.deviceName?.toLowerCase().contains('thinkpad') == true) {
-      deviceIcon = Icons.laptop;
-    }
-
-    return TableRow(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
-      ),
-      children: [
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Row(
-            children: [
-              Icon(deviceIcon, size: 20, color: Colors.grey[600]),
-              SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      device.deviceName ?? 'Unknown Device',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                    if (device.battery != null && device.battery! > 0)
-                      Text(
-                        'Battery: ${device.battery}%',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(device.deviceModel ?? 'N/A', style: TextStyle(fontSize: 14)),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(device.imei ?? 'N/A', style: TextStyle(fontSize: 14)),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(device.serialNumber ?? 'N/A', style: TextStyle(fontSize: 14)),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              status,
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            formatDateTime(lastSeenTime),
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Icon(Icons.more_vert, size: 16, color: Colors.grey[400]),
-        ),
-      ],
-    );
-  }
-
   Widget _buildRecentAlertsCard() {
-    List<Map<String, dynamic>> alerts = [];
-    
-    for (Device device in devices) {
-      DateTime? lastSeenTime = parseLastSeen(device.lastSeen);
-      bool online = isDeviceOnline(lastSeenTime);
-      
+    final alerts = <Map<String, dynamic>>[];
+    for (final device in devices) {
+      final lastSeenTime = parseLastSeen(device.lastSeen);
+      final online = isDeviceOnline(lastSeenTime);
+
       if (!online) {
         alerts.add({
           'icon': Icons.warning,
           'title': 'Device Offline',
-          'subtitle': '${device.deviceName} - ${device.deviceModel}',
+          'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
           'time': formatDateTime(lastSeenTime),
           'color': Colors.orange,
         });
       }
-      
+
       if ((device.battery ?? 100) < 20) {
         alerts.add({
           'icon': Icons.battery_alert,
@@ -1247,13 +1244,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
         });
       }
     }
-    
-    // Limit to 3 most recent alerts
-    alerts = alerts.take(3).toList();
+    final limitedAlerts = alerts.take(3).toList();
 
     return Container(
       height: 250,
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -1262,7 +1257,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 6,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1279,7 +1274,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   color: Colors.grey[800],
                 ),
               ),
-              Spacer(),
+              const Spacer(),
               Text(
                 'View All',
                 style: TextStyle(
@@ -1289,9 +1284,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
               ),
             ],
           ),
-          SizedBox(height: 15),
+          const SizedBox(height: 15),
           Expanded(
-            child: alerts.isEmpty
+            child: limitedAlerts.isEmpty
                 ? Center(
                     child: Text(
                       'No recent alerts',
@@ -1299,63 +1294,15 @@ class _MDMDashboardState extends State<MDMDashboard> {
                     ),
                   )
                 : Column(
-                    children: alerts.map((alert) => _buildAlertItem(
-                      alert['icon'],
-                      alert['title'],
-                      alert['subtitle'],
-                      alert['time'],
-                      alert['color'],
-                    )).toList(),
+                    children: limitedAlerts.map((alert) => _buildAlertItem(
+                          alert['icon'] as IconData,
+                          alert['title'] as String,
+                          alert['subtitle'] as String,
+                          alert['time'] as String,
+                          alert['color'] as Color,
+                        )).toList(),
                   ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAlertItem(IconData icon, String title, String subtitle, String time, Color color) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 16, color: color),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                Text(
-                  time,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, size: 16, color: Colors.grey[400]),
         ],
       ),
     );
@@ -1363,7 +1310,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
 
   Widget _buildServerStatusCard() {
     return Container(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -1372,7 +1319,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             color: Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
             blurRadius: 6,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1389,7 +1336,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   color: Colors.grey[800],
                 ),
               ),
-              Spacer(),
+              const Spacer(),
               Container(
                 width: 8,
                 height: 8,
@@ -1398,7 +1345,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   shape: BoxShape.circle,
                 ),
               ),
-              SizedBox(width: 5),
+              const SizedBox(width: 5),
               Text(
                 errorMessage == null ? 'Online' : 'Offline',
                 style: TextStyle(
@@ -1409,11 +1356,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
               ),
             ],
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           _buildServerMetric('CPU Usage', 42),
-          SizedBox(height: 15),
+          const SizedBox(height: 15),
           _buildServerMetric('Memory Usage', 68),
-          SizedBox(height: 15),
+          const SizedBox(height: 15),
           Text(
             'Server: $serverIp:$serverPort',
             style: TextStyle(
@@ -1421,6 +1368,163 @@ class _MDMDashboardState extends State<MDMDashboard> {
               color: Colors.grey[500],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.grey[600],
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  TableRow _buildDeviceRowFromDevice(Device device) {
+    final lastSeenTime = parseLastSeen(device.lastSeen);
+    final online = isDeviceOnline(lastSeenTime);
+    final status = online ? 'Online' : 'Offline';
+    final statusColor = online ? Colors.green : Colors.red;
+
+    IconData deviceIcon = Icons.smartphone;
+    final modelLower = device.deviceModel?.toLowerCase() ?? '';
+    if (modelLower.contains('iphone')) {
+      deviceIcon = Icons.phone_iphone;
+    } else if (modelLower.contains('ipad')) {
+      deviceIcon = Icons.tablet_mac;
+    } else if (modelLower.contains('laptop') || modelLower.contains('thinkpad')) {
+      deviceIcon = Icons.laptop;
+    }
+
+    return TableRow(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Row(
+            children: [
+              Icon(deviceIcon, size: 20, color: Colors.grey[600]),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.deviceName,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (device.battery != null && device.battery! > 0)
+                      Text(
+                        'Battery: ${device.battery}%',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(device.deviceModel ?? 'N/A', style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(device.imei ?? 'N/A', style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(device.serialNumber ?? 'N/A', style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              status,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(
+            formatDateTime(lastSeenTime),
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: _CommandControls(device: device, serverIp: serverIp, serverPort: serverPort, token: token),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAlertItem(IconData icon, String title, String subtitle, String time, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  time,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, size: 16, color: Colors.grey[400]),
         ],
       ),
     );
@@ -1439,17 +1543,17 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 fontSize: 13,
               ),
             ),
-            Spacer(),
+            const Spacer(),
             Text(
               '$percentage%',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
-        SizedBox(height: 5),
+        const SizedBox(height: 5),
         LinearProgressIndicator(
           value: percentage / 100,
           backgroundColor: Colors.grey[200],
@@ -1458,6 +1562,153 @@ class _MDMDashboardState extends State<MDMDashboard> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CommandControls extends StatefulWidget {
+  final Device device;
+  final String serverIp;
+  final String serverPort;
+  final String token;
+
+  const _CommandControls({
+    required this.device,
+    required this.serverIp,
+    required this.serverPort,
+    required this.token,
+  });
+
+  @override
+  __CommandControlsState createState() => __CommandControlsState();
+}
+
+class __CommandControlsState extends State<_CommandControls> {
+  String? selectedCommand;
+  final TextEditingController packageController = TextEditingController();
+  final TextEditingController apkUrlController = TextEditingController();
+  final DeviceService _deviceService = DeviceService();
+
+  @override
+  void dispose() {
+    packageController.dispose();
+    apkUrlController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 200,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DropdownButton<String>(
+            hint: const Text('Selecione um comando'),
+            value: selectedCommand,
+            isExpanded: true,
+            items: const [
+              DropdownMenuItem(value: 'lock', child: Text('Bloquear')),
+              DropdownMenuItem(value: 'uninstall_app', child: Text('Desinstalar App')),
+              DropdownMenuItem(value: 'install_app', child: Text('Instalar App')),
+            ],
+            onChanged: (value) {
+              setState(() {
+                selectedCommand = value;
+              });
+            },
+          ),
+          if (selectedCommand == 'uninstall_app')
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: TextField(
+                controller: packageController,
+                decoration: const InputDecoration(
+                  labelText: 'Package Name',
+                  border: OutlineInputBorder(),
+                  hintText: 'com.example.app',
+                ),
+              ),
+            ),
+          if (selectedCommand == 'install_app')
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: TextField(
+                controller: apkUrlController,
+                decoration: const InputDecoration(
+                  labelText: 'APK URL',
+                  border: OutlineInputBorder(),
+                  hintText: 'https://example.com/app.apk',
+                ),
+              ),
+            ),
+          if (selectedCommand != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: ElevatedButton(
+                onPressed: () async {
+                  try {
+                    final parameters = <String, String>{};
+                    if (selectedCommand == 'uninstall_app') {
+                      if (packageController.text.trim().isEmpty) {
+                        throw Exception('Package Name é obrigatório.');
+                      }
+                      parameters['packageName'] = packageController.text.trim();
+                    } else if (selectedCommand == 'install_app') {
+                      if (apkUrlController.text.trim().isEmpty) {
+                        throw Exception('APK URL é obrigatório.');
+                      }
+                      parameters['apkUrl'] = apkUrlController.text.trim();
+                    }
+                    final deviceId = widget.device.deviceId ?? widget.device.imei ?? '';
+                    final message = await _deviceService.sendCommand(
+                      widget.serverIp,
+                      widget.serverPort,
+                      widget.token,
+                      deviceId,
+                      selectedCommand!,
+                      parameters,
+                    );
+                    if (!mounted) return;
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Sucesso'),
+                        content: Text(message),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('OK'),
+                          ),
+                        ],
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Erro'),
+                        content: Text(e.toString()),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('OK'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Executar'),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
