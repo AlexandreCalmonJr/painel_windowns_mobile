@@ -7,12 +7,12 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:process/process.dart';
 
-// Constants
+// Constantes
 const Duration kOnlineTolerance = Duration(minutes: 15);
 const int kMaxRetries = 3;
 const Duration kRetryDelay = Duration(seconds: 2);
 
-// Utility functions
+// Funções utilitárias
 DateTime? parseLastSeen(dynamic lastSeen) {
   if (lastSeen is String) {
     final parsed = DateTime.tryParse(lastSeen)?.toLocal();
@@ -33,6 +33,44 @@ String formatDateTime(DateTime? dateTime) {
   return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
 }
 
+int ipToInt(String ip) {
+  final parts = ip.split('.').map(int.parse).toList();
+  return (parts[0] << 24) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
+}
+
+String? getUnitFromIp(String? ipAddress, List<Unit> units) {
+  if (ipAddress == null) return null;
+  final ipInt = ipToInt(ipAddress);
+  for (final unit in units) {
+    final startInt = ipToInt(unit.ipRangeStart);
+    final endInt = ipToInt(unit.ipRangeEnd);
+    if (ipInt >= startInt && ipInt <= endInt) {
+      return unit.name;
+    }
+  }
+  return null;
+}
+
+class Unit {
+  final String name;
+  final String ipRangeStart;
+  final String ipRangeEnd;
+
+  Unit({required this.name, required this.ipRangeStart, required this.ipRangeEnd});
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'ipRangeStart': ipRangeStart,
+        'ipRangeEnd': ipRangeEnd,
+      };
+
+  factory Unit.fromJson(Map<String, dynamic> json) => Unit(
+        name: json['name'] as String,
+        ipRangeStart: json['ipRangeStart'] as String,
+        ipRangeEnd: json['ipRangeEnd'] as String,
+      );
+}
+
 class Device {
   final String? id;
   final String? deviceId;
@@ -47,6 +85,10 @@ class Device {
   final String? lastSync;
   final String? sector;
   final String? floor;
+  final bool? maintenanceStatus;
+  final String? maintenanceTicket;
+  final List<Map<String, dynamic>>? maintenanceHistory; // Novo: Histórico de manutenção
+  final String? unit; // Novo: Unidade baseada em faixa de IP
 
   String get deviceName => '${sector ?? 'N/A'}${floor ?? 'N/A'}';
 
@@ -64,9 +106,14 @@ class Device {
     this.lastSync,
     this.sector,
     this.floor,
+    this.maintenanceStatus,
+    this.maintenanceTicket,
+    this.maintenanceHistory,
+    this.unit,
   });
 
-  factory Device.fromJson(Map<String, dynamic> json) {
+  factory Device.fromJson(Map<String, dynamic> json, List<Unit> units) {
+    final maintenanceHistory = (json['maintenance_history'] as List<dynamic>?)?.cast<Map<String, dynamic>>();
     return Device(
       id: json['_id'] as String?,
       deviceId: json['device_id'] as String?,
@@ -81,6 +128,10 @@ class Device {
       lastSync: json['last_sync'] as String?,
       sector: json['sector'] as String?,
       floor: json['floor'] as String?,
+      maintenanceStatus: json['maintenance_status'] as bool?,
+      maintenanceTicket: json['maintenance_ticket'] as String?,
+      maintenanceHistory: maintenanceHistory,
+      unit: json['unit'] as String? ?? getUnitFromIp(json['ip_address'] as String?, units),
     );
   }
 
@@ -99,12 +150,16 @@ class Device {
       'last_sync': lastSync,
       'sector': sector,
       'floor': floor,
+      'maintenance_status': maintenanceStatus,
+      'maintenance_ticket': maintenanceTicket,
+      'maintenance_history': maintenanceHistory,
+      'unit': unit,
     };
   }
 }
 
 class DeviceService {
-  Future<List<Device>> fetchDevices(String ip, String port, String token) async {
+  Future<List<Device>> fetchDevices(String ip, String port, String token, List<Unit> units) async {
     final url = 'http://$ip:$port/api/devices';
     int attempts = 0;
 
@@ -119,7 +174,7 @@ class DeviceService {
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           if (data is List) {
-            return data.map((json) => Device.fromJson(json as Map<String, dynamic>)).toList();
+            return data.map((json) => Device.fromJson(json as Map<String, dynamic>, units)).toList();
           }
           throw Exception('Resposta inválida: Esperado uma lista de dispositivos.');
         } else if (response.statusCode == 401) {
@@ -199,6 +254,34 @@ class DeviceService {
   }
 }
 
+class UnitConfig {
+  static Future<List<Unit>> loadUnits() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/units.json');
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final json = jsonDecode(content) as List<dynamic>;
+        return json.map((item) => Unit.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (e) {
+      print('Erro ao carregar unidades: $e');
+    }
+    return [];
+  }
+
+  static Future<void> saveUnits(List<Unit> units) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/units.json');
+      final json = units.map((unit) => unit.toJson()).toList();
+      await file.writeAsString(jsonEncode(json));
+    } catch (e) {
+      print('Erro ao salvar unidades: $e');
+    }
+  }
+}
+
 void main() {
   runApp(const MyApp());
 }
@@ -209,7 +292,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MDM Control',
+      title: 'Controle MDM',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         scaffoldBackgroundColor: Colors.grey[50],
@@ -230,17 +313,18 @@ class MDMDashboard extends StatefulWidget {
 class _MDMDashboardState extends State<MDMDashboard> {
   int selectedIndex = 0;
   List<Device> devices = [];
+  List<Unit> units = [];
   bool isLoading = false;
   String? errorMessage;
   final DeviceService _deviceService = DeviceService();
   Timer? _refreshTimer;
 
-  // Connection settings
-  String serverIp = '10.71.2.112';
+  // Configurações de conexão
+  String serverIp = '192.168.0.183';
   String serverPort = '3000';
   String token = '';
 
-  // Text controllers for settings
+  // Controladores de texto
   late TextEditingController _ipController;
   late TextEditingController _portController;
   late TextEditingController _tokenController;
@@ -251,6 +335,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
     _ipController = TextEditingController(text: serverIp);
     _portController = TextEditingController(text: serverPort);
     _tokenController = TextEditingController(text: token);
+    _loadUnits();
     _loadDevices();
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
       if (mounted) {
@@ -268,6 +353,13 @@ class _MDMDashboardState extends State<MDMDashboard> {
     super.dispose();
   }
 
+  Future<void> _loadUnits() async {
+    final loadedUnits = await UnitConfig.loadUnits();
+    setState(() {
+      units = loadedUnits;
+    });
+  }
+
   Future<void> _loadDevices() async {
     setState(() {
       isLoading = true;
@@ -275,7 +367,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
     });
 
     try {
-      final fetchedDevices = await _deviceService.fetchDevices(serverIp, serverPort, token);
+      final fetchedDevices = await _deviceService.fetchDevices(serverIp, serverPort, token, units);
       setState(() {
         devices = fetchedDevices;
         isLoading = false;
@@ -293,13 +385,17 @@ class _MDMDashboardState extends State<MDMDashboard> {
     int secureDevices = 0;
     int atRiskDevices = 0;
     int compliantDevices = 0;
+    int maintenanceDevices = 0;
 
     for (final device in devices) {
       final lastSeenTime = parseLastSeen(device.lastSeen);
       final online = isDeviceOnline(lastSeenTime);
       final battery = device.battery?.toDouble() ?? 0;
+      final inMaintenance = device.maintenanceStatus ?? false;
 
-      if (online && battery > 20) {
+      if (inMaintenance) {
+        maintenanceDevices++;
+      } else if (online && battery > 20) {
         secureDevices++;
         compliantDevices++;
       } else {
@@ -312,37 +408,46 @@ class _MDMDashboardState extends State<MDMDashboard> {
       'secure': secureDevices,
       'atRisk': atRiskDevices,
       'compliant': compliantDevices,
+      'maintenance': maintenanceDevices,
     };
   }
 
   Future<void> _downloadDevicesCsv() async {
     final headers = [
       'Dispositivo',
-      'Model',
-      'Imei',
+      'Modelo',
+      'IMEI',
       'Serial',
       'Status',
-      'Ultima Sincronização',
+      'Última Sincronização',
       'Bateria',
       'Endereço IP',
       'Rede',
       'Endereço MAC',
+      'Em Manutenção',
+      'Chamado',
+      'Unidade',
     ];
 
     final rows = devices.map((device) {
       final lastSeenTime = parseLastSeen(device.lastSeen);
       final online = isDeviceOnline(lastSeenTime);
+      final inMaintenance = device.maintenanceStatus ?? false;
+      final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
       return [
         device.deviceName,
         device.deviceModel ?? 'N/A',
         device.imei ?? 'N/A',
         device.serialNumber ?? 'N/A',
-        online ? 'Online' : 'Offline',
+        status,
         formatDateTime(lastSeenTime),
         device.battery != null ? '${device.battery}%' : 'N/A',
         device.ipAddress ?? 'N/A',
         device.network ?? 'N/A',
         device.macAddress ?? 'N/A',
+        inMaintenance ? 'Sim' : 'Não',
+        device.maintenanceTicket ?? 'N/A',
+        device.unit ?? 'N/A',
       ].map((value) => '"${value.toString().replaceAll('"', '""')}"').join(',');
     }).toList();
 
@@ -351,7 +456,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final path = '${directory.path}${Platform.pathSeparator}devices_$timestamp.csv';
+      final path = '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
       final file = File(path);
       await file.writeAsString(csvContent);
 
@@ -432,7 +537,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   child: const Text(
-                    'MDM Control',
+                    'Controle MDM',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -443,14 +548,15 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 Expanded(
                   child: ListView(
                     children: [
-                      _buildMenuItem(Icons.dashboard, 'Dashboard', 0),
-                      _buildMenuItem(Icons.devices, 'Devices', 1),
-                      _buildMenuItem(Icons.storage, 'Server', 2),
-                      _buildMenuItem(Icons.security, 'Security', 3),
-                      _buildMenuItem(Icons.people, 'Users', 4),
-                      _buildMenuItem(Icons.bar_chart, 'Reports', 5),
-                      _buildMenuItem(Icons.warning, 'Alerts', 6),
-                      _buildMenuItem(Icons.settings, 'Settings', 7),
+                      _buildMenuItem(Icons.dashboard, 'Painel', 0),
+                      _buildMenuItem(Icons.devices, 'Dispositivos', 1),
+                      _buildMenuItem(Icons.storage, 'Servidor', 2),
+                      _buildMenuItem(Icons.security, 'Segurança', 3),
+                      _buildMenuItem(Icons.people, 'Usuários', 4),
+                      _buildMenuItem(Icons.bar_chart, 'Relatórios', 5),
+                      _buildMenuItem(Icons.warning, 'Alertas', 6),
+                      _buildMenuItem(Icons.settings, 'Configurações', 7),
+                      _buildMenuItem(Icons.business, 'Unidades', 8), // Nova aba
                     ],
                   ),
                 ),
@@ -477,7 +583,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   child: Row(
                     children: [
                       const Text(
-                        'MDM Control',
+                        'Controle MDM',
                         style: TextStyle(
                           color: Colors.blue,
                           fontSize: 20,
@@ -495,6 +601,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                       IconButton(
                         icon: Icon(Icons.refresh, color: Colors.grey[600]),
                         onPressed: _loadDevices,
+                        tooltip: 'Atualizar',
                       ),
                       Icon(Icons.notifications, color: Colors.grey[600]),
                       const SizedBox(width: 15),
@@ -539,6 +646,8 @@ class _MDMDashboardState extends State<MDMDashboard> {
         return _buildAlertsTab();
       case 7:
         return _buildSettingsTab();
+      case 8:
+        return _buildUnitsTab();
       default:
         return _buildDashboardTab();
     }
@@ -550,7 +659,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Dashboard',
+          'Painel',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -582,13 +691,13 @@ class _MDMDashboardState extends State<MDMDashboard> {
         const SizedBox(height: 20),
         Row(
           children: [
-            Expanded(child: _buildStatCard('Total Devices', '${stats['total']}', Icons.smartphone, Colors.blue)),
+            Expanded(child: _buildStatCard('Total de Dispositivos', '${stats['total']}', Icons.smartphone, Colors.blue)),
             const SizedBox(width: 15),
-            Expanded(child: _buildStatCard('Secure', '${stats['secure']}', Icons.check_circle, Colors.green)),
+            Expanded(child: _buildStatCard('Seguros', '${stats['secure']}', Icons.check_circle, Colors.green)),
             const SizedBox(width: 15),
-            Expanded(child: _buildStatCard('At Risk', '${stats['atRisk']}', Icons.warning, Colors.orange)),
+            Expanded(child: _buildStatCard('Em Risco', '${stats['atRisk']}', Icons.warning, Colors.orange)),
             const SizedBox(width: 15),
-            Expanded(child: _buildStatCard('Compliant', '${stats['compliant']}', Icons.verified, Colors.purple)),
+            Expanded(child: _buildStatCard('Em Manutenção', '${stats['maintenance']}', Icons.build, Colors.blueGrey)),
           ],
         ),
         const SizedBox(height: 30),
@@ -597,7 +706,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             children: [
               Expanded(
                 flex: 2,
-                child: _buildManagedDevicesCard(),
+                child: _buildManagedDevicesCard(showActions: false),
               ),
               const SizedBox(width: 20),
               SizedBox(
@@ -622,7 +731,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Devices',
+          'Dispositivos',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -631,7 +740,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
         ),
         const SizedBox(height: 20),
         Expanded(
-          child: _buildManagedDevicesCard(),
+          child: _buildManagedDevicesCard(showActions: true),
         ),
       ],
     );
@@ -642,7 +751,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Server',
+          'Servidor',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -668,7 +777,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Server Configuration',
+                'Configuração do Servidor',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -676,12 +785,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Server IP: $serverIp'),
-              Text('Server Port: $serverPort'),
+              Text('IP do Servidor: $serverIp'),
+              Text('Porta do Servidor: $serverPort'),
               const SizedBox(height: 20),
-              _buildServerMetric('CPU Usage', 42),
+              _buildServerMetric('Uso de CPU', 42),
               const SizedBox(height: 15),
-              _buildServerMetric('Memory Usage', 68),
+              _buildServerMetric('Uso de Memória', 68),
             ],
           ),
         ),
@@ -694,7 +803,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Security',
+          'Segurança',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -720,7 +829,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Security Policies',
+                'Políticas de Segurança',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -728,9 +837,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text('Password Policy: Enabled'),
-              const Text('Encryption: AES-256'),
-              Text('Last Security Scan: ${formatDateTime(DateTime.now())}'),
+              const Text('Política de Senha: Ativada'),
+              const Text('Criptografia: AES-256'),
+              Text('Última Verificação de Segurança: ${formatDateTime(DateTime.now())}'),
             ],
           ),
         ),
@@ -743,7 +852,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Users',
+          'Usuários',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -771,7 +880,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
               Row(
                 children: [
                   Text(
-                    'User Management',
+                    'Gerenciamento de Usuários',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -782,7 +891,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   ElevatedButton.icon(
                     onPressed: () {},
                     icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Add User'),
+                    label: const Text('Adicionar Usuário'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -804,8 +913,8 @@ class _MDMDashboardState extends State<MDMDashboard> {
                       border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
                     ),
                     children: [
-                      _buildTableHeader('Name'),
-                      _buildTableHeader('Role'),
+                      _buildTableHeader('Nome'),
+                      _buildTableHeader('Função'),
                       _buildTableHeader('Status'),
                     ],
                   ),
@@ -813,15 +922,15 @@ class _MDMDashboardState extends State<MDMDashboard> {
                     children: [
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                        child: Text('John Doe', style: TextStyle(fontSize: 14)),
+                        child: Text('João Silva', style: TextStyle(fontSize: 14)),
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                        child: Text('Admin', style: TextStyle(fontSize: 14)),
+                        child: Text('Administrador', style: TextStyle(fontSize: 14)),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                        child: Text('Active', style: TextStyle(fontSize: 14, color: Colors.green)),
+                        child: Text('Ativo', style: TextStyle(fontSize: 14, color: Colors.green)),
                       ),
                     ],
                   ),
@@ -839,7 +948,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Reports',
+          'Relatórios',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -865,7 +974,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'System Reports',
+                'Relatórios do Sistema',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -873,9 +982,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text('Device Compliance Report: Available'),
-              const Text('Security Incidents: 0'),
-              Text('Last Generated: ${formatDateTime(DateTime.now())}'),
+              const Text('Relatório de Conformidade: Disponível'),
+              const Text('Incidentes de Segurança: 0'),
+              Text('Último Gerado: ${formatDateTime(DateTime.now())}'),
             ],
           ),
         ),
@@ -888,21 +997,22 @@ class _MDMDashboardState extends State<MDMDashboard> {
     for (final device in devices) {
       final lastSeenTime = parseLastSeen(device.lastSeen);
       final online = isDeviceOnline(lastSeenTime);
+      final inMaintenance = device.maintenanceStatus ?? false;
 
-      if (!online) {
+      if (!online && !inMaintenance) {
         alerts.add({
           'icon': Icons.warning,
-          'title': 'Device Offline',
+          'title': 'Dispositivo Offline',
           'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
           'time': formatDateTime(lastSeenTime),
           'color': Colors.orange,
         });
       }
 
-      if ((device.battery ?? 100) < 20) {
+      if ((device.battery ?? 100) < 20 && !inMaintenance) {
         alerts.add({
           'icon': Icons.battery_alert,
-          'title': 'Low Battery',
+          'title': 'Bateria Baixa',
           'subtitle': '${device.deviceName} - ${device.battery}%',
           'time': formatDateTime(lastSeenTime),
           'color': Colors.red,
@@ -914,7 +1024,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Alerts',
+          'Alertas',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -941,7 +1051,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'All Alerts',
+                  'Todos os Alertas',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -953,7 +1063,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   child: alerts.isEmpty
                       ? Center(
                           child: Text(
-                            'No alerts available',
+                            'Nenhum alerta disponível',
                             style: TextStyle(color: Colors.grey[600]),
                           ),
                         )
@@ -980,7 +1090,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Settings',
+          'Configurações',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -1006,7 +1116,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'System Settings',
+                'Configurações do Sistema',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -1017,9 +1127,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
               TextField(
                 controller: _ipController,
                 decoration: const InputDecoration(
-                  labelText: 'Server IP',
+                  labelText: 'IP do Servidor',
                   border: OutlineInputBorder(),
-                  hintText: '10.71.2.112',
+                  hintText: '192.168.0.183',
                 ),
                 onChanged: (value) {
                   setState(() {
@@ -1031,7 +1141,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
               TextField(
                 controller: _portController,
                 decoration: const InputDecoration(
-                  labelText: 'Server Port',
+                  labelText: 'Porta do Servidor',
                   border: OutlineInputBorder(),
                   hintText: '3000',
                 ),
@@ -1045,9 +1155,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
               TextField(
                 controller: _tokenController,
                 decoration: const InputDecoration(
-                  labelText: 'Authentication Token',
+                  labelText: 'Token de Autenticação',
                   border: OutlineInputBorder(),
-                  hintText: 'Enter your auth token',
+                  hintText: 'Insira seu token de autenticação',
                 ),
                 onChanged: (value) {
                   setState(() {
@@ -1062,12 +1172,242 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('Save & Refresh'),
+                child: const Text('Salvar e Atualizar'),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildUnitsTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Unidades',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[800],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Gerenciamento de Unidades',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  const Spacer(),
+                  ElevatedButton.icon(
+                    onPressed: () => _showUnitDialog(),
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Adicionar Unidade'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Table(
+                columnWidths: const {
+                  0: FlexColumnWidth(2),
+                  1: FlexColumnWidth(2),
+                  2: FlexColumnWidth(2),
+                  3: FlexColumnWidth(1),
+                },
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+                    ),
+                    children: [
+                      _buildTableHeader('Nome da Unidade'),
+                      _buildTableHeader('IP Inicial'),
+                      _buildTableHeader('IP Final'),
+                      _buildTableHeader('Ações'),
+                    ],
+                  ),
+                  ...units.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final unit = entry.value;
+                    return TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          child: Text(unit.name, style: const TextStyle(fontSize: 14)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          child: Text(unit.ipRangeStart, style: const TextStyle(fontSize: 14)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          child: Text(unit.ipRangeEnd, style: const TextStyle(fontSize: 14)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 20),
+                                onPressed: () => _showUnitDialog(unit: unit, index: index),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                                onPressed: () => _deleteUnit(index),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showUnitDialog({Unit? unit, int? index}) {
+    final nameController = TextEditingController(text: unit?.name);
+    final startIpController = TextEditingController(text: unit?.ipRangeStart);
+    final endIpController = TextEditingController(text: unit?.ipRangeEnd);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(unit == null ? 'Adicionar Unidade' : 'Editar Unidade'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Nome da Unidade',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: startIpController,
+              decoration: const InputDecoration(
+                labelText: 'IP Inicial (ex.: 192.168.0.1)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: endIpController,
+              decoration: const InputDecoration(
+                labelText: 'IP Final (ex.: 192.168.0.100)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              final startIp = startIpController.text.trim();
+              final endIp = endIpController.text.trim();
+
+              if (name.isEmpty || startIp.isEmpty || endIp.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Todos os campos são obrigatórios')),
+                );
+                return;
+              }
+
+              if (!_isValidIp(startIp) || !_isValidIp(endIp)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Endereços IP inválidos')),
+                );
+                return;
+              }
+
+              final newUnit = Unit(name: name, ipRangeStart: startIp, ipRangeEnd: endIp);
+              setState(() {
+                if (index == null) {
+                  units.add(newUnit);
+                } else {
+                  units[index] = newUnit;
+                }
+              });
+              UnitConfig.saveUnits(units);
+              _loadDevices(); // Atualizar unidades dos dispositivos
+              Navigator.of(context).pop();
+            },
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isValidIp(String ip) {
+    final regex = RegExp(r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$');
+    return regex.hasMatch(ip);
+  }
+
+  void _deleteUnit(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar Exclusão'),
+        content: const Text('Deseja excluir esta unidade?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                units.removeAt(index);
+              });
+              UnitConfig.saveUnits(units);
+              _loadDevices();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1139,7 +1479,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
     );
   }
 
-  Widget _buildManagedDevicesCard() {
+  Widget _buildManagedDevicesCard({required bool showActions}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1160,7 +1500,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
           Row(
             children: [
               Text(
-                'Dispositivos gerenciados',
+                'Dispositivos Gerenciados',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -1184,14 +1524,15 @@ class _MDMDashboardState extends State<MDMDashboard> {
           Expanded(
             child: SingleChildScrollView(
               child: Table(
-                columnWidths: const {
-                  0: FlexColumnWidth(2),
-                  1: FlexColumnWidth(2),
-                  2: FlexColumnWidth(2),
-                  3: FlexColumnWidth(2),
-                  4: FlexColumnWidth(1.5),
-                  5: FlexColumnWidth(2),
-                  6: FlexColumnWidth(3),
+                columnWidths: {
+                  0: const FlexColumnWidth(2),
+                  1: const FlexColumnWidth(2),
+                  2: const FlexColumnWidth(2),
+                  3: const FlexColumnWidth(2),
+                  4: const FlexColumnWidth(1.5),
+                  5: const FlexColumnWidth(2),
+                  6: const FlexColumnWidth(2),
+                  if (showActions) 7: const FlexColumnWidth(3),
                 },
                 children: [
                   TableRow(
@@ -1200,15 +1541,16 @@ class _MDMDashboardState extends State<MDMDashboard> {
                     ),
                     children: [
                       _buildTableHeader('Dispositivo'),
-                      _buildTableHeader('Model'),
-                      _buildTableHeader('Imei'),
+                      _buildTableHeader('Modelo'),
+                      _buildTableHeader('IMEI'),
                       _buildTableHeader('Serial'),
                       _buildTableHeader('Status'),
-                      _buildTableHeader('Ultima Sincronização'),
-                      _buildTableHeader('Ações'),
+                      _buildTableHeader('Última Sincronização'),
+                      _buildTableHeader('Unidade'),
+                      if (showActions) _buildTableHeader('Ações'),
                     ],
                   ),
-                  ...devices.map((device) => _buildDeviceRowFromDevice(device)),
+                  ...devices.map((device) => _buildDeviceRowFromDevice(device, showActions: showActions)),
                 ],
               ),
             ),
@@ -1223,21 +1565,22 @@ class _MDMDashboardState extends State<MDMDashboard> {
     for (final device in devices) {
       final lastSeenTime = parseLastSeen(device.lastSeen);
       final online = isDeviceOnline(lastSeenTime);
+      final inMaintenance = device.maintenanceStatus ?? false;
 
-      if (!online) {
+      if (!online && !inMaintenance) {
         alerts.add({
           'icon': Icons.warning,
-          'title': 'Device Offline',
+          'title': 'Dispositivo Offline',
           'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
           'time': formatDateTime(lastSeenTime),
           'color': Colors.orange,
         });
       }
 
-      if ((device.battery ?? 100) < 20) {
+      if ((device.battery ?? 100) < 20 && !inMaintenance) {
         alerts.add({
           'icon': Icons.battery_alert,
-          'title': 'Low Battery',
+          'title': 'Bateria Baixa',
           'subtitle': '${device.deviceName} - ${device.battery}%',
           'time': formatDateTime(lastSeenTime),
           'color': Colors.red,
@@ -1267,7 +1610,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
           Row(
             children: [
               Text(
-                'Recent Alerts',
+                'Alertas Recentes',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1276,7 +1619,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
               ),
               const Spacer(),
               Text(
-                'View All',
+                'Ver Todos',
                 style: TextStyle(
                   color: Colors.blue,
                   fontSize: 12,
@@ -1289,7 +1632,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             child: limitedAlerts.isEmpty
                 ? Center(
                     child: Text(
-                      'No recent alerts',
+                      'Nenhum alerta recente',
                       style: TextStyle(color: Colors.grey[600]),
                     ),
                   )
@@ -1329,7 +1672,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
           Row(
             children: [
               Text(
-                'Server Status',
+                'Status do Servidor',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1357,12 +1700,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
             ],
           ),
           const SizedBox(height: 20),
-          _buildServerMetric('CPU Usage', 42),
+          _buildServerMetric('Uso de CPU', 42),
           const SizedBox(height: 15),
-          _buildServerMetric('Memory Usage', 68),
+          _buildServerMetric('Uso de Memória', 68),
           const SizedBox(height: 15),
           Text(
-            'Server: $serverIp:$serverPort',
+            'Servidor: $serverIp:$serverPort',
             style: TextStyle(
               fontSize: 11,
               color: Colors.grey[500],
@@ -1387,11 +1730,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
     );
   }
 
-  TableRow _buildDeviceRowFromDevice(Device device) {
+  TableRow _buildDeviceRowFromDevice(Device device, {required bool showActions}) {
     final lastSeenTime = parseLastSeen(device.lastSeen);
     final online = isDeviceOnline(lastSeenTime);
-    final status = online ? 'Online' : 'Offline';
-    final statusColor = online ? Colors.green : Colors.red;
+    final inMaintenance = device.maintenanceStatus ?? false;
+    final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+    final statusColor = inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
 
     IconData deviceIcon = Icons.smartphone;
     final modelLower = device.deviceModel?.toLowerCase() ?? '';
@@ -1425,7 +1769,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
                     ),
                     if (device.battery != null && device.battery! > 0)
                       Text(
-                        'Battery: ${device.battery}%',
+                        'Bateria: ${device.battery}%',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                    if (inMaintenance && device.maintenanceTicket != null)
+                      Text(
+                        'Chamado: ${device.maintenanceTicket}',
                         style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                       ),
                   ],
@@ -1474,8 +1823,17 @@ class _MDMDashboardState extends State<MDMDashboard> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: _CommandControls(device: device, serverIp: serverIp, serverPort: serverPort, token: token),
+          child: Text(
+            device.unit ?? 'N/A',
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
+        if (showActions)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            child: _CommandControls(device: device, serverIp: serverIp, serverPort: serverPort, token: token),
+          ),
       ],
     );
   }
@@ -1587,17 +1945,20 @@ class __CommandControlsState extends State<_CommandControls> {
   String? selectedCommand;
   final TextEditingController packageController = TextEditingController();
   final TextEditingController apkUrlController = TextEditingController();
+  final TextEditingController ticketController = TextEditingController();
   final DeviceService _deviceService = DeviceService();
 
   @override
   void dispose() {
     packageController.dispose();
     apkUrlController.dispose();
+    ticketController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final inMaintenance = widget.device.maintenanceStatus ?? false;
     return SizedBox(
       width: 200,
       child: Column(
@@ -1607,10 +1968,14 @@ class __CommandControlsState extends State<_CommandControls> {
             hint: const Text('Selecione um comando'),
             value: selectedCommand,
             isExpanded: true,
-            items: const [
-              DropdownMenuItem(value: 'lock', child: Text('Bloquear')),
-              DropdownMenuItem(value: 'uninstall_app', child: Text('Desinstalar App')),
-              DropdownMenuItem(value: 'install_app', child: Text('Instalar App')),
+            items: [
+              const DropdownMenuItem(value: 'lock', child: Text('Bloquear')),
+              const DropdownMenuItem(value: 'uninstall_app', child: Text('Desinstalar App')),
+              const DropdownMenuItem(value: 'install_app', child: Text('Instalar App')),
+              DropdownMenuItem(
+                value: 'set_maintenance',
+                child: Text(inMaintenance ? 'Retornar à Produção' : 'Marcar como Manutenção'),
+              ),
             ],
             onChanged: (value) {
               setState(() {
@@ -1624,7 +1989,7 @@ class __CommandControlsState extends State<_CommandControls> {
               child: TextField(
                 controller: packageController,
                 decoration: const InputDecoration(
-                  labelText: 'Package Name',
+                  labelText: 'Nome do Pacote',
                   border: OutlineInputBorder(),
                   hintText: 'com.example.app',
                 ),
@@ -1636,9 +2001,21 @@ class __CommandControlsState extends State<_CommandControls> {
               child: TextField(
                 controller: apkUrlController,
                 decoration: const InputDecoration(
-                  labelText: 'APK URL',
+                  labelText: 'URL do APK',
                   border: OutlineInputBorder(),
-                  hintText: 'https://example.com/app.apk',
+                  hintText: 'http://example.com/app.apk',
+                ),
+              ),
+            ),
+          if (selectedCommand == 'set_maintenance' && !inMaintenance)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: TextField(
+                controller: ticketController,
+                decoration: const InputDecoration(
+                  labelText: 'Número do Chamado',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ex.: CHAMADO-123',
                 ),
               ),
             ),
@@ -1651,14 +2028,48 @@ class __CommandControlsState extends State<_CommandControls> {
                     final parameters = <String, String>{};
                     if (selectedCommand == 'uninstall_app') {
                       if (packageController.text.trim().isEmpty) {
-                        throw Exception('Package Name é obrigatório.');
+                        throw Exception('Nome do Pacote é obrigatório.');
                       }
                       parameters['packageName'] = packageController.text.trim();
                     } else if (selectedCommand == 'install_app') {
                       if (apkUrlController.text.trim().isEmpty) {
-                        throw Exception('APK URL é obrigatório.');
+                        throw Exception('URL do APK é obrigatório.');
                       }
                       parameters['apkUrl'] = apkUrlController.text.trim();
+                    } else if (selectedCommand == 'set_maintenance') {
+                      if (inMaintenance) {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirmar Retorno à Produção'),
+                            content: const Text('Deseja retornar este dispositivo à produção? O status de manutenção será removido.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: const Text('Cancelar'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(true),
+                                child: const Text('Confirmar'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm != true) return;
+                        parameters['maintenance_status'] = 'false';
+                        parameters['maintenance_ticket'] = '';
+                      } else {
+                        if (ticketController.text.trim().isEmpty) {
+                          throw Exception('Número do Chamado é obrigatório.');
+                        }
+                        parameters['maintenance_status'] = 'true';
+                        parameters['maintenance_ticket'] = ticketController.text.trim();
+                      }
+                      parameters['maintenance_history_entry'] = jsonEncode({
+                        'timestamp': DateTime.now().toIso8601String(),
+                        'status': inMaintenance ? 'returned_to_production' : 'entered_maintenance',
+                        'ticket': inMaintenance ? null : ticketController.text.trim(),
+                      });
                     }
                     final deviceId = widget.device.deviceId ?? widget.device.imei ?? '';
                     final message = await _deviceService.sendCommand(
@@ -1677,7 +2088,10 @@ class __CommandControlsState extends State<_CommandControls> {
                         content: Text(message),
                         actions: [
                           TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _refreshDevices();
+                            },
                             child: const Text('OK'),
                           ),
                         ],
@@ -1710,5 +2124,10 @@ class __CommandControlsState extends State<_CommandControls> {
         ],
       ),
     );
+  }
+
+  void _refreshDevices() {
+    final state = context.findAncestorStateOfType<_MDMDashboardState>();
+    state?._loadDevices();
   }
 }
