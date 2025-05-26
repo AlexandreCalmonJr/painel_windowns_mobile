@@ -41,8 +41,16 @@ int ipToInt(String ip) {
   return (parts[0] << 24) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
 }
 
+bool _isValidIp(String ip) {
+  final regex = RegExp(
+    r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$',
+  );
+  return regex.hasMatch(ip);
+}
+
 String? getUnitFromIp(String? ipAddress, List<Unit> units) {
-  if (ipAddress == null) return null;
+  if (ipAddress == null || ipAddress == 'N/A' || !_isValidIp(ipAddress))
+    return null;
   final ipInt = ipToInt(ipAddress);
   for (final unit in units) {
     final startInt = ipToInt(unit.ipRangeStart);
@@ -105,9 +113,6 @@ class Device {
   final String? complianceStatus;
   final List<Map<String, dynamic>>? installedApps;
   final Map<String, dynamic>? securityPolicies;
-  
-
-  
 
   Device({
     this.id,
@@ -142,14 +147,24 @@ class Device {
     return Device(
       id: json['_id']?.toString(),
       deviceId: json['device_id']?.toString(),
-      deviceName: '${json['sector']?.toString() ?? 'N/A'}${json['floor']?.toString() ?? ''}',
+      deviceName:
+          '${json['sector']?.toString() ?? 'N/A'}${json['floor']?.toString() ?? ''}',
       deviceModel: json['device_model']?.toString(),
       battery: json['battery'] is num ? json['battery'] : null,
-      ipAddress: json['ip_address']?.toString(),
-      network: json['network']?.toString(),
+      ipAddress:
+          json['ip_address']?.toString() == 'N/A'
+              ? null
+              : json['ip_address']?.toString(),
+      network:
+          json['network']?.toString() == 'N/A'
+              ? null
+              : json['network']?.toString(),
       serialNumber: json['serial_number']?.toString(),
       imei: json['imei']?.toString(),
-      macAddress: json['mac_address']?.toString(),
+      macAddress:
+          json['mac_address']?.toString() == 'N/A'
+              ? null
+              : json['mac_address']?.toString(),
       lastSeen: json['last_seen']?.toString(),
       lastSync: json['last_sync']?.toString(),
       sector: json['sector']?.toString(),
@@ -287,45 +302,93 @@ class DeviceService {
     return [];
   }
 
-Future<String> sendCommand(
-  String ip,
-  String port,
-  String token,
-  String deviceId,
-  String command,
-  Map<String, dynamic> parameters,
-) async {
-  final url = 'http://$ip:$port/api/executeCommand';
+  Future<String> sendCommand(
+    String ip,
+    String port,
+    String token,
+    String deviceId,
+    String command,
+    Map<String, dynamic> parameters,
+  ) async {
+    final url = 'http://$ip:$port/api/executeCommand';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http
+            .post(
+              Uri.parse(url),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'device_id': deviceId,
+                'command': command,
+                ...parameters,
+              }),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        print(
+          'Resposta bruta de /api/executeCommand: ${response.body}',
+        ); // Log para depuração
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return data['message']?.toString() ?? 'Comando executado com sucesso';
+        } else {
+          final errorData = jsonDecode(response.body);
+          throw Exception(
+            errorData['error'] ??
+                'Erro ${response.statusCode}: ${response.reasonPhrase}',
+          );
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Tempo limite esgotado ao enviar comando.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão com o servidor.');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Erro ao enviar comando: $e');
+      }
+    }
+    throw Exception('Falha ao enviar comando após $kMaxRetries tentativas.');
+  }
+
+  Future<String> deleteDevice(String ip, String port, String token, String deviceId) async {
+  final url = 'http://$ip:$port/api/devices/$deviceId';
   int attempts = 0;
 
   while (attempts < kMaxRetries) {
     attempts++;
     try {
-      final response = await http.post(
+      final response = await http.delete(
         Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'device_id': deviceId,
-          'command': command,
-          ...parameters,
-        }),
       ).timeout(const Duration(seconds: 15));
 
-      print('Resposta bruta de /api/executeCommand: ${response.body}'); // Log para depuração
+      print('Resposta bruta de /api/devices/$deviceId: ${response.body}'); // Log para depuração
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['message']?.toString() ?? 'Comando executado com sucesso';
+        return data['message']?.toString() ?? 'Dispositivo excluído com sucesso';
       } else {
         final errorData = jsonDecode(response.body);
         throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
       }
     } on TimeoutException {
       if (attempts == kMaxRetries) {
-        throw Exception('Tempo limite esgotado ao enviar comando.');
+        throw Exception('Tempo limite esgotado ao excluir dispositivo.');
       }
       await Future.delayed(kRetryDelay);
     } on SocketException {
@@ -334,11 +397,16 @@ Future<String> sendCommand(
       }
       await Future.delayed(kRetryDelay);
     } catch (e) {
-      throw Exception('Erro ao enviar comando: $e');
+      throw Exception('Erro ao excluir dispositivo: $e');
     }
   }
-  throw Exception('Falha ao enviar comando após $kMaxRetries tentativas.');
+  throw Exception('Falha ao excluir dispositivo após $kMaxRetries tentativas.');
 }
+
+
+
+
+
 }
 
 class UnitConfig {
@@ -407,6 +475,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
   String? errorMessage;
   final DeviceService _deviceService = DeviceService();
   Timer? _refreshTimer;
+  String _deviceFilter = 'Todos'; // Novo estado para filtro
 
   // Configurações de conexão
   String serverIp = '192.168.0.183';
@@ -418,6 +487,142 @@ class _MDMDashboardState extends State<MDMDashboard> {
   late TextEditingController _portController;
   late TextEditingController _tokenController;
 
+  // Método para construir os itens do menu
+
+  TableRow _buildDeviceTableRow(Device device, {required bool showActions}) {
+  final lastSeenTime = parseLastSeen(device.lastSeen);
+  final online = isDeviceOnline(lastSeenTime);
+  final inMaintenance = device.maintenanceStatus ?? false;
+  final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+  final statusColor = inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
+
+  IconData deviceIcon = Icons.smartphone;
+  final modelLower = device.deviceModel?.toLowerCase() ?? '';
+  if (modelLower.contains('iphone')) {
+    deviceIcon = Icons.phone_iphone;
+  } else if (modelLower.contains('ipad')) {
+    deviceIcon = Icons.tablet_mac;
+  } else if (modelLower.contains('laptop') || modelLower.contains('thinkpad')) {
+    deviceIcon = Icons.laptop;
+  }
+
+  return TableRow(
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+    ),
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Row(
+          children: [
+            Icon(deviceIcon, size: 20, color: Colors.grey[600]),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    device.deviceName ?? 'N/A',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (device.battery != null && device.battery! > 0)
+                    Text(
+                      'Bateria: ${device.battery}%',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
+                  if (inMaintenance && device.maintenanceTicket != null)
+                    Text(
+                      'Chamado: ${device.maintenanceTicket}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.deviceModel ?? 'N/A',
+          style: const TextStyle(fontSize: 14),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.serialNumber ?? 'N/A',
+          style: const TextStyle(fontSize: 14),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.imei ?? 'N/A',
+          style: const TextStyle(fontSize: 14),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            status,
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          formatDateTime(lastSeenTime),
+          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.unit ?? 'N/A',
+          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      if (showActions)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: _CommandControls(
+            device: device,
+            serverIp: serverIp,
+            serverPort: serverPort,
+            token: token,
+            onDelete: () => _deleteDevice(device), // Passar callback para exclusão
+          ),
+        ),
+    ],
+  );
+}
+
+void _deleteDevice(Device device) {
+  setState(() {
+    devices.removeWhere((d) => d.deviceId == device.deviceId);
+  });
+}
   @override
   void initState() {
     super.initState();
@@ -629,6 +834,47 @@ class _MDMDashboardState extends State<MDMDashboard> {
     }
   }
 
+  List<Device> _filterDevices() {
+  return devices.where((device) {
+    final lastSeenTime = parseLastSeen(device.lastSeen);
+    final online = isDeviceOnline(lastSeenTime);
+    final inMaintenance = device.maintenanceStatus ?? false;
+    switch (_deviceFilter) {
+      case 'Online':
+        return online && !inMaintenance;
+      case 'Offline':
+        return !online && !inMaintenance;
+      case 'Maintenance':
+        return inMaintenance;
+      default:
+        return true; // Todos
+    }
+  }).toList();
+}
+  Widget _buildMaintenanceDevicesTab() {
+  final maintenanceDevices = devices.where((device) => device.maintenanceStatus ?? false).toList();
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Dispositivos em Manutenção',
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey[800],
+        ),
+      ),
+      const SizedBox(height: 20),
+      Expanded(
+        child: _buildManagedDevicesCard(
+          showActions: true,
+          devices: maintenanceDevices,
+        ),
+      ),
+    ],
+  );
+}
+
   @override
   Widget build(BuildContext context) {
     final stats = _getDeviceStats();
@@ -663,8 +909,19 @@ class _MDMDashboardState extends State<MDMDashboard> {
                       _buildMenuItem(Icons.bar_chart, 'Relatórios', 5),
                       _buildMenuItem(Icons.warning, 'Alertas', 6),
                       _buildMenuItem(Icons.settings, 'Configurações', 7),
+                      _buildMenuItem(Icons.build, 'Dispositivos em Manutenção', 9), // Novo item
                       _buildMenuItem(Icons.business, 'Unidades', 8), // Nova aba
                     ],
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Text(
+                    'Desenvolvido por Tecnico Alexandre Calmon - TI Bahia',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ],
@@ -758,111 +1015,138 @@ class _MDMDashboardState extends State<MDMDashboard> {
         return _buildSettingsTab();
       case 8:
         return _buildUnitsTab();
+      case 9:
+        return _buildMaintenanceDevicesTab();
       default:
         return _buildDashboardTab();
     }
   }
+  
+
 
   Widget _buildDashboardTab() {
-    final stats = _getDeviceStats();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Painel',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
-          ),
-        ),
-        if (errorMessage != null)
-          Container(
-            margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.orange[50],
-              border: Border.all(color: Colors.orange),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.warning, color: Colors.orange),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    errorMessage!,
-                    style: TextStyle(color: Colors.orange[800]),
-                  ),
-                ),
-              ],
+  final stats = _getDeviceStats();
+  final filteredDevices = _filterDevices(); // Filtrar dispositivos
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Painel',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
             ),
           ),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'Total de Dispositivos',
-                '${stats['total']}',
-                Icons.smartphone,
-                Colors.blue,
-              ),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: _buildStatCard(
-                'Seguros',
-                '${stats['secure']}',
-                Icons.check_circle,
-                Colors.green,
-              ),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: _buildStatCard(
-                'Em Risco',
-                '${stats['atRisk']}',
-                Icons.warning,
-                Colors.orange,
-              ),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: _buildStatCard(
-                'Em Manutenção',
-                '${stats['maintenance']}',
-                Icons.build,
-                Colors.blueGrey,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 30),
-        Expanded(
+          DropdownButton<String>(
+            value: _deviceFilter,
+            items: const [
+              DropdownMenuItem(value: 'Todos', child: Text('Todos')),
+              DropdownMenuItem(value: 'Online', child: Text('Online')),
+              DropdownMenuItem(value: 'Offline', child: Text('Offline')),
+              DropdownMenuItem(value: 'Maintenance', child: Text('Em Manutenção')),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _deviceFilter = value!;
+              });
+            },
+          ),
+        ],
+      ),
+      if (errorMessage != null)
+        Container(
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.orange[50],
+            border: Border.all(color: Colors.orange),
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: Row(
             children: [
+              const Icon(Icons.warning, color: Colors.orange),
+              const SizedBox(width: 10),
               Expanded(
-                flex: 2,
-                child: _buildManagedDevicesCard(showActions: false),
-              ),
-              const SizedBox(width: 20),
-              SizedBox(
-                width: 300,
-                child: Column(
-                  children: [
-                    _buildRecentAlertsCard(),
-                    const SizedBox(height: 20),
-                    _buildServerStatusCard(),
-                  ],
+                child: Text(
+                  errorMessage!,
+                  style: TextStyle(color: Colors.orange[800]),
                 ),
               ),
             ],
           ),
         ),
-      ],
-    );
-  }
+      const SizedBox(height: 20),
+      Row(
+        children: [
+          Expanded(
+            child: _buildStatCard(
+              'Total de Dispositivos',
+              '${stats['total']}',
+              Icons.smartphone,
+              Colors.blue,
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: _buildStatCard(
+              'Seguros',
+              '${stats['secure']}',
+              Icons.check_circle,
+              Colors.green,
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: _buildStatCard(
+              'Em Risco',
+              '${stats['atRisk']}',
+              Icons.warning,
+              Colors.orange,
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: _buildStatCard(
+              'Em Manutenção',
+              '${stats['maintenance']}',
+              Icons.work,
+              Colors.blueGrey,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 30),
+      Expanded(
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: _buildManagedDevicesCard(
+                showActions: false,
+                devices: filteredDevices, // Usar dispositivos filtrados
+              ),
+            ),
+            const SizedBox(width: 20),
+            SizedBox(
+              width: 300,
+              child: Column(
+                children: [
+                  _buildRecentAlertsCard(),
+                  const SizedBox(height: 20),
+                  _buildServerStatusCard(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
 
   Widget _buildDevicesTab() {
     return Column(
@@ -1066,7 +1350,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                           horizontal: 8,
                         ),
                         child: Text(
-                          'João Silva',
+                          'TI-BAHIA',
                           style: TextStyle(fontSize: 14),
                         ),
                       ),
@@ -1551,11 +1835,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
                     return;
                   }
 
-                  if (!_isValidIp(startIp) || !_isValidIp(endIp)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Endereços IP inválidos')),
+                  bool _isValidIp(String ip) {
+                    final regex = RegExp(
+                      r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$',
                     );
-                    return;
+                    return regex.hasMatch(ip);
                   }
 
                   final newUnit = Unit(
@@ -1686,93 +1970,91 @@ class _MDMDashboardState extends State<MDMDashboard> {
     );
   }
 
-  Widget _buildManagedDevicesCard({required bool showActions}) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Dispositivos Gerenciados',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: _downloadDevicesCsv,
-                icon: const Icon(Icons.download, size: 16),
-                label: const Text('Baixar CSV'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Table(
-                columnWidths: {
-                  0: const FlexColumnWidth(2),
-                  1: const FlexColumnWidth(2),
-                  2: const FlexColumnWidth(2),
-                  3: const FlexColumnWidth(2),
-                  4: const FlexColumnWidth(1.5),
-                  5: const FlexColumnWidth(2),
-                  6: const FlexColumnWidth(2),
-                  if (showActions) 7: const FlexColumnWidth(3),
-                },
-                children: [
-                  TableRow(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[300]!),
-                      ),
-                    ),
-                    children: [
-                      _buildTableHeader('Dispositivo'),
-                      _buildTableHeader('Modelo'),
-                      _buildTableHeader('IMEI'),
-                      _buildTableHeader('Serial'),
-                      _buildTableHeader('Status'),
-                      _buildTableHeader('Última Sincronização'),
-                      _buildTableHeader('Unidade'),
-                      if (showActions) _buildTableHeader('Ações'),
-                    ],
-                  ),
-                  ...devices.map(
-                    (device) => _buildDeviceRowFromDevice(
-                      device,
-                      showActions: showActions,
-                    ),
-                  ),
-                ],
+Widget _buildManagedDevicesCard({required bool showActions, List<Device>? devices}) {
+  final displayDevices = devices ?? this.devices; // Usar lista fornecida ou default
+  return Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.grey.withOpacity(0.1),
+          spreadRadius: 1,
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Dispositivos Gerenciados',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
               ),
             ),
+            const Spacer(),
+            ElevatedButton.icon(
+              onPressed: _downloadDevicesCsv,
+              icon: const Icon(Icons.download, size: 20),
+              label: const Text('Baixar CSV'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                elevation: 0,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Table(
+              columnWidths: {
+                0: const FlexColumnWidth(2),
+                1: const FlexColumnWidth(2),
+                2: const FlexColumnWidth(2),
+                3: const FlexColumnWidth(2),
+                4: const FlexColumnWidth(1.5),
+                5: const FlexColumnWidth(2),
+                6: const FlexColumnWidth(2),
+                if (showActions) 7: const FlexColumnWidth(3),
+              },
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey[300]!),
+                    ),
+                  ),
+                  children: [
+                    _buildTableHeader('Nome'),
+                    _buildTableHeader('Modelo'),
+                    _buildTableHeader('Serial'),
+                    _buildTableHeader('IMEI'),
+                    _buildTableHeader('Status'),
+                    _buildTableHeader('Última Sincronização'),
+                    _buildTableHeader('Unidade'),
+                    if (showActions) _buildTableHeader('Ações'),
+                  ],
+                ),
+                ...displayDevices.map(
+                  (device) => _buildDeviceTableRow(device, showActions: showActions),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildRecentAlertsCard() {
     final alerts = <Map<String, dynamic>>[];
@@ -2163,12 +2445,14 @@ class _CommandControls extends StatefulWidget {
   final String serverIp;
   final String serverPort;
   final String token;
+  final VoidCallback? onDelete; // Novo callback
 
   const _CommandControls({
     required this.device,
     required this.serverIp,
     required this.serverPort,
     required this.token,
+    this.onDelete,
   });
 
   @override
@@ -2196,199 +2480,242 @@ class __CommandControlsState extends State<_CommandControls> {
     return SizedBox(
       width: 200,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          DropdownButton<String>(
-            hint: const Text('Selecione um comando'),
-            value: selectedCommand,
-            isExpanded: true,
-            items: [
-              const DropdownMenuItem(value: 'lock', child: Text('Bloquear')),
-              const DropdownMenuItem(
-                value: 'uninstall_app',
-                child: Text('Desinstalar App'),
-              ),
-              const DropdownMenuItem(
-                value: 'install_app',
-                child: Text('Instalar App'),
-              ),
-              DropdownMenuItem(
-                value: 'set_maintenance',
-                child: Text(
-                  inMaintenance
-                      ? 'Retornar à Produção'
-                      : 'Marcar como Manutenção',
-                ),
-              ),
-            ],
-            onChanged: (value) {
-              setState(() {
-                selectedCommand = value;
-              });
-            },
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    DropdownButton<String>(
+      hint: const Text('Selecione um comando'),
+      value: selectedCommand,
+      isExpanded: true,
+      items: [
+        const DropdownMenuItem(value: 'lock', child: Text('Bloquear')),
+        const DropdownMenuItem(value: 'uninstall_app', child: Text('Desinstalar App')),
+        const DropdownMenuItem(value: 'install_app', child: Text('Instalar App')),
+        DropdownMenuItem(
+          value: 'set_maintenance',
+          child: Text(
+            inMaintenance ? 'Retornar à Produção' : 'Marcar como Manutenção',
           ),
-          if (selectedCommand == 'uninstall_app')
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: TextField(
-                controller: packageController,
-                decoration: const InputDecoration(
-                  labelText: 'Nome do Pacote',
-                  border: OutlineInputBorder(),
-                  hintText: 'com.example.app',
-                ),
-              ),
-            ),
-          if (selectedCommand == 'install_app')
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: TextField(
-                controller: apkUrlController,
-                decoration: const InputDecoration(
-                  labelText: 'URL do APK',
-                  border: OutlineInputBorder(),
-                  hintText: 'http://example.com/app.apk',
-                ),
-              ),
-            ),
-          if (selectedCommand == 'set_maintenance' && !inMaintenance)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: TextField(
-                controller: ticketController,
-                decoration: const InputDecoration(
-                  labelText: 'Número do Chamado',
-                  border: OutlineInputBorder(),
-                  hintText: 'Ex.: CHAMADO-123',
-                ),
-              ),
-            ),
-          if (selectedCommand != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: ElevatedButton(
-                onPressed: () async {
-                  try {
-                    final parameters =
-                        <
-                          String,
-                          dynamic
-                        >{}; // Alterado para dynamic para suportar booleanos
-                    if (selectedCommand == 'uninstall_app') {
-                      if (packageController.text.trim().isEmpty) {
-                        throw Exception('Nome do Pacote é obrigatório.');
-                      }
-                      parameters['packageName'] = packageController.text.trim();
-                    } else if (selectedCommand == 'install_app') {
-                      if (apkUrlController.text.trim().isEmpty) {
-                        throw Exception('URL do APK é obrigatório.');
-                      }
-                      parameters['apkUrl'] = apkUrlController.text.trim();
-                    } else if (selectedCommand == 'set_maintenance') {
-                      if (inMaintenance) {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder:
-                              (context) => AlertDialog(
-                                title: const Text(
-                                  'Confirmar Retorno à Produção',
-                                ),
-                                content: const Text(
-                                  'Deseja retornar este dispositivo à produção? O status de manutenção será removido.',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed:
-                                        () => Navigator.of(context).pop(false),
-                                    child: const Text('Cancelar'),
-                                  ),
-                                  TextButton(
-                                    onPressed:
-                                        () => Navigator.of(context).pop(true),
-                                    child: const Text('Confirmar'),
-                                  ),
-                                ],
-                              ),
-                        );
-                        if (confirm != true) return;
-                        parameters['maintenance_status'] =
-                            false; // Enviar como booleano
-                        parameters['maintenance_ticket'] = '';
-                      } else {
-                        if (ticketController.text.trim().isEmpty) {
-                          throw Exception('Número do Chamado é obrigatório.');
-                        }
-                        parameters['maintenance_status'] =
-                            true; // Enviar como booleano
-                        parameters['maintenance_ticket'] =
-                            ticketController.text.trim();
-                      }
-                      parameters['maintenance_history_entry'] = jsonEncode({
-                        'timestamp': DateTime.now().toIso8601String(),
-                        'status':
-                            inMaintenance
-                                ? 'returned_to_production'
-                                : 'entered_maintenance',
-                        'ticket':
-                            inMaintenance ? null : ticketController.text.trim(),
-                      });
-                    }
-                    final deviceId =
-                        widget.device.deviceId ?? widget.device.imei ?? '';
-                    final message = await _deviceService.sendCommand(
-                      widget.serverIp,
-                      widget.serverPort,
-                      widget.token,
-                      deviceId,
-                      selectedCommand!,
-                      parameters,
-                    );
-                    if (!mounted) return;
-                    showDialog(
-                      context: context,
-                      builder:
-                          (context) => AlertDialog(
-                            title: const Text('Sucesso'),
-                            content: Text(message),
-                            actions: [
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                  _refreshDevices();
-                                },
-                                child: const Text('OK'),
-                              ),
-                            ],
-                          ),
-                    );
-                  } catch (e) {
-                    if (!mounted) return;
-                    showDialog(
-                      context: context,
-                      builder:
-                          (context) => AlertDialog(
-                            title: const Text('Erro'),
-                            content: Text(e.toString()),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                child: const Text('OK'),
-                              ),
-                            ],
-                          ),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Executar'),
-              ),
-            ),
-        ],
+        ),
+      ],
+      onChanged: (value) {
+        setState(() {
+          selectedCommand = value;
+        });
+      },
+    ),
+    if (selectedCommand == 'uninstall_app')
+      Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: TextField(
+          controller: packageController,
+          decoration: const InputDecoration(
+            labelText: 'Nome do Pacote',
+            border: OutlineInputBorder(),
+            hintText: 'com.example.app',
+          ),
+        ),
       ),
-    );
+    if (selectedCommand == 'install_app')
+      Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: TextField(
+          controller: apkUrlController,
+          decoration: const InputDecoration(
+            labelText: 'URL do APK',
+            border: OutlineInputBorder(),
+            hintText: 'http://example.com/app.apk',
+          ),
+        ),
+      ),
+    if (selectedCommand == 'set_maintenance' && !inMaintenance)
+      Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: TextField(
+          controller: ticketController,
+          decoration: const InputDecoration(
+            labelText: 'Número do Chamado',
+            border: OutlineInputBorder(),
+            hintText: 'Ex.: CHAMADO-123',
+          ),
+        ),
+      ),
+    if (selectedCommand != null)
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: ElevatedButton(
+          onPressed: () async {
+            try {
+              final parameters = <String, dynamic>{};
+              if (selectedCommand == 'uninstall_app') {
+                if (packageController.text.trim().isEmpty) {
+                  throw Exception('Nome do Pacote é obrigatório.');
+                }
+                parameters['packageName'] = packageController.text.trim();
+              } else if (selectedCommand == 'install_app') {
+                if (apkUrlController.text.trim().isEmpty) {
+                  throw Exception('URL do APK é obrigatório.');
+                }
+                parameters['apkUrl'] = apkUrlController.text.trim();
+              } else if (selectedCommand == 'set_maintenance') {
+                if (inMaintenance) {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Confirmar Retorno à Produção'),
+                      content: const Text('Deseja retornar este dispositivo à produção? O status de manutenção será removido.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancelar'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Confirmar'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm != true) return;
+                  parameters['maintenance_status'] = false;
+                  parameters['maintenance_ticket'] = '';
+                } else {
+                  if (ticketController.text.trim().isEmpty) {
+                    throw Exception('Número do Chamado é obrigatório.');
+                  }
+                  parameters['maintenance_status'] = true;
+                  parameters['maintenance_ticket'] = ticketController.text.trim();
+                }
+                parameters['maintenance_history_entry'] = jsonEncode({
+                  'timestamp': DateTime.now().toIso8601String(),
+                  'status': inMaintenance ? 'returned_to_production' : 'entered_maintenance',
+                  'ticket': inMaintenance ? null : ticketController.text.trim(),
+                });
+              }
+              final deviceId = widget.device.deviceId ?? widget.device.imei ?? '';
+              final message = await _deviceService.sendCommand(
+                widget.serverIp,
+                widget.serverPort,
+                widget.token,
+                deviceId,
+                selectedCommand!,
+                parameters,
+              );
+              if (!mounted) return;
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Sucesso'),
+                  content: Text(message),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _refreshDevices();
+                      },
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            } catch (e) {
+              if (!mounted) return;
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Erro'),
+                  content: Text(e.toString()),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Executar'),
+        ),
+      ),
+    Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ElevatedButton(
+        onPressed: () async {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Confirmar Exclusão'),
+              content: const Text('Deseja excluir este dispositivo permanentemente? Esta ação não pode ser desfeita.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Excluir'),
+                ),
+              ],
+            ),
+          );
+          if (confirm == true) {
+            try {
+              final deviceId = widget.device.deviceId ?? widget.device.imei ?? '';
+              final message = await _deviceService.deleteDevice(
+                widget.serverIp,
+                widget.serverPort,
+                widget.token,
+                deviceId,
+              );
+              if (!mounted) return;
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Sucesso'),
+                  content: Text(message),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        widget.onDelete?.call(); // Chamar callback
+                        _refreshDevices();
+                      },
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            } catch (e) {
+              if (!mounted) return;
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Erro'),
+                  content: Text(e.toString()),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red,
+          foregroundColor: Colors.white,
+        ),
+        child: const Text('Excluir'),
+      ),
+    ),
+  ],
+)    );
   }
 
   void _refreshDevices() {
