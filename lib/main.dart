@@ -21,7 +21,10 @@ DateTime? parseLastSeen(dynamic lastSeen) {
   return null;
 }
 
-bool isDeviceOnline(DateTime? seenTime, {Duration tolerance = kOnlineTolerance}) {
+bool isDeviceOnline(
+  DateTime? seenTime, {
+  Duration tolerance = kOnlineTolerance,
+}) {
   if (seenTime == null) return false;
   final now = DateTime.now();
   final difference = now.difference(seenTime).abs();
@@ -56,24 +59,29 @@ class Unit {
   final String ipRangeStart;
   final String ipRangeEnd;
 
-  Unit({required this.name, required this.ipRangeStart, required this.ipRangeEnd});
+  Unit({
+    required this.name,
+    required this.ipRangeStart,
+    required this.ipRangeEnd,
+  });
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'ipRangeStart': ipRangeStart,
-        'ipRangeEnd': ipRangeEnd,
-      };
+    'name': name,
+    'ipRangeStart': ipRangeStart,
+    'ipRangeEnd': ipRangeEnd,
+  };
 
   factory Unit.fromJson(Map<String, dynamic> json) => Unit(
-        name: json['name'] as String,
-        ipRangeStart: json['ipRangeStart'] as String,
-        ipRangeEnd: json['ipRangeEnd'] as String,
-      );
+    name: json['name'] as String,
+    ipRangeStart: json['ipRangeStart'] as String,
+    ipRangeEnd: json['ipRangeEnd'] as String,
+  );
 }
 
 class Device {
   final String? id;
   final String? deviceId;
+  final String? deviceName;
   final String? deviceModel;
   final num? battery;
   final String? ipAddress;
@@ -87,14 +95,24 @@ class Device {
   final String? floor;
   final bool? maintenanceStatus;
   final String? maintenanceTicket;
-  final List<Map<String, dynamic>>? maintenanceHistory; // Novo: Histórico de manutenção
-  final String? unit; // Novo: Unidade baseada em faixa de IP
+  final List<Map<String, dynamic>>? maintenanceHistory;
+  final String? unit;
+  final String? provisioningStatus;
+  final String? provisioningToken;
+  final String? enrollmentDate;
+  final String? configurationProfile;
+  final String? ownerOrganization;
+  final String? complianceStatus;
+  final List<Map<String, dynamic>>? installedApps;
+  final Map<String, dynamic>? securityPolicies;
+  
 
-  String get deviceName => '${sector ?? 'N/A'}${floor ?? 'N/A'}';
+  
 
   Device({
     this.id,
     this.deviceId,
+    this.deviceName,
     this.deviceModel,
     this.battery,
     this.ipAddress,
@@ -110,28 +128,56 @@ class Device {
     this.maintenanceTicket,
     this.maintenanceHistory,
     this.unit,
+    this.provisioningStatus,
+    this.provisioningToken,
+    this.enrollmentDate,
+    this.configurationProfile,
+    this.ownerOrganization,
+    this.complianceStatus,
+    this.installedApps,
+    this.securityPolicies,
   });
 
   factory Device.fromJson(Map<String, dynamic> json, List<Unit> units) {
-    final maintenanceHistory = (json['maintenance_history'] as List<dynamic>?)?.cast<Map<String, dynamic>>();
     return Device(
-      id: json['_id'] as String?,
-      deviceId: json['device_id'] as String?,
-      deviceModel: json['device_model'] as String?,
-      battery: (json['battery'] is num) ? json['battery'] : null,
-      ipAddress: json['ip_address'] as String?,
-      network: json['network'] as String?,
-      serialNumber: json['serial_number'] as String?,
-      imei: json['imei'] as String?,
-      macAddress: json['mac_address'] as String?,
-      lastSeen: json['last_seen'] as String?,
-      lastSync: json['last_sync'] as String?,
-      sector: json['sector'] as String?,
-      floor: json['floor'] as String?,
-      maintenanceStatus: json['maintenance_status'] as bool?,
-      maintenanceTicket: json['maintenance_ticket'] as String?,
-      maintenanceHistory: maintenanceHistory,
-      unit: json['unit'] as String? ?? getUnitFromIp(json['ip_address'] as String?, units),
+      id: json['_id']?.toString(),
+      deviceId: json['device_id']?.toString(),
+      deviceName: '${json['sector']?.toString() ?? 'N/A'}${json['floor']?.toString() ?? ''}',
+      deviceModel: json['device_model']?.toString(),
+      battery: json['battery'] is num ? json['battery'] : null,
+      ipAddress: json['ip_address']?.toString(),
+      network: json['network']?.toString(),
+      serialNumber: json['serial_number']?.toString(),
+      imei: json['imei']?.toString(),
+      macAddress: json['mac_address']?.toString(),
+      lastSeen: json['last_seen']?.toString(),
+      lastSync: json['last_sync']?.toString(),
+      sector: json['sector']?.toString(),
+      floor: json['floor']?.toString(),
+      maintenanceStatus:
+          json['maintenance_status'] is bool
+              ? json['maintenance_status']
+              : false,
+      maintenanceTicket: json['maintenance_ticket']?.toString(),
+      maintenanceHistory:
+          (json['maintenance_history'] as List<dynamic>?)
+              ?.cast<Map<String, dynamic>>(),
+      unit:
+          json['unit']?.toString() ??
+          getUnitFromIp(json['ip_address']?.toString(), units),
+      provisioningStatus: json['provisioning_status']?.toString(),
+      provisioningToken: json['provisioning_token']?.toString(),
+      enrollmentDate: json['enrollment_date']?.toString(),
+      configurationProfile: json['configuration_profile']?.toString(),
+      ownerOrganization: json['owner_organization']?.toString(),
+      complianceStatus: json['compliance_status']?.toString(),
+      installedApps:
+          (json['installed_apps'] as List<dynamic>?)
+              ?.cast<Map<String, dynamic>>(),
+      securityPolicies:
+          json['security_policies'] is Map
+              ? json['security_policies'] as Map<String, dynamic>
+              : null,
     );
   }
 
@@ -139,6 +185,7 @@ class Device {
     return {
       '_id': id,
       'device_id': deviceId,
+      'device_name': deviceName,
       'device_model': deviceModel,
       'battery': battery,
       'ip_address': ipAddress,
@@ -154,48 +201,85 @@ class Device {
       'maintenance_ticket': maintenanceTicket,
       'maintenance_history': maintenanceHistory,
       'unit': unit,
+      'provisioning_status': provisioningStatus,
+      'provisioning_token': provisioningToken,
+      'enrollment_date': enrollmentDate,
+      'configuration_profile': configurationProfile,
+      'owner_organization': ownerOrganization,
+      'compliance_status': complianceStatus,
+      'installed_apps': installedApps,
+      'security_policies': securityPolicies,
     };
   }
 }
 
 class DeviceService {
-  Future<List<Device>> fetchDevices(String ip, String port, String token, List<Unit> units) async {
+  Future<List<Device>> fetchDevices(
+    String ip,
+    String port,
+    String token,
+    List<Unit> units,
+  ) async {
     final url = 'http://$ip:$port/api/devices';
     int attempts = 0;
 
     while (attempts < kMaxRetries) {
       attempts++;
       try {
-        final response = await http.get(
-          Uri.parse(url),
-          headers: {'Authorization': 'Bearer $token'},
-        ).timeout(const Duration(seconds: 15));
+        final response = await http
+            .get(Uri.parse(url), headers: {'Authorization': 'Bearer $token'})
+            .timeout(const Duration(seconds: 15));
+
+        print(
+          'Resposta bruta de /api/devices: ${response.body}',
+        ); // Log para depuração
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           if (data is List) {
-            return data.map((json) => Device.fromJson(json as Map<String, dynamic>, units)).toList();
+            return data
+                .map((json) {
+                  try {
+                    return Device.fromJson(json as Map<String, dynamic>, units);
+                  } catch (e) {
+                    print('Erro ao parsear dispositivo: $json, erro: $e');
+                    return null;
+                  }
+                })
+                .where((device) => device != null)
+                .cast<Device>()
+                .toList();
           }
-          throw Exception('Resposta inválida: Esperado uma lista de dispositivos.');
+          throw Exception(
+            'Resposta inválida: Esperado uma lista de dispositivos, recebido: ${data.runtimeType}',
+          );
         } else if (response.statusCode == 401) {
-          throw Exception('Erro 401: Token de autenticação inválido ou ausente.');
+          throw Exception(
+            'Erro 401: Token de autenticação inválido ou ausente.',
+          );
         } else if (response.statusCode == 403) {
           throw Exception('Erro 403: Acesso negado. Verifique o token.');
         } else {
-          throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase ?? "Erro desconhecido na API"}');
+          throw Exception(
+            'Erro ${response.statusCode}: ${response.reasonPhrase ?? "Erro desconhecido na API"}',
+          );
         }
       } on TimeoutException {
         if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão: Tempo limite esgotado após $kMaxRetries tentativas.');
+          throw Exception(
+            'Falha na conexão: Tempo limite esgotado após $kMaxRetries tentativas.',
+          );
         }
         await Future.delayed(kRetryDelay);
       } on SocketException catch (e) {
         if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão: Verifique o IP/Porta e a rede. ($e)');
+          throw Exception(
+            'Falha na conexão: Verifique o IP/Porta e a rede. ($e)',
+          );
         }
         await Future.delayed(kRetryDelay);
-      } on FormatException {
-        throw Exception('Erro ao processar resposta: Formato inválido.');
+      } on FormatException catch (e) {
+        throw Exception('Erro ao processar resposta: Formato inválido. ($e)');
       } catch (e) {
         throw Exception('Falha inesperada: $e');
       }
@@ -203,55 +287,58 @@ class DeviceService {
     return [];
   }
 
-  Future<String> sendCommand(String ip, String port, String token, String deviceId, String command, Map<String, String> parameters) async {
-    if (deviceId.isEmpty) {
-      throw Exception('ID do dispositivo é obrigatório.');
-    }
-    final url = 'http://$ip:$port/api/executeCommand';
-    int attempts = 0;
+Future<String> sendCommand(
+  String ip,
+  String port,
+  String token,
+  String deviceId,
+  String command,
+  Map<String, dynamic> parameters,
+) async {
+  final url = 'http://$ip:$port/api/executeCommand';
+  int attempts = 0;
 
-    while (attempts < kMaxRetries) {
-      attempts++;
-      try {
-        final response = await http.post(
-          Uri.parse(url),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'device_id': deviceId,
-            'command': command,
-            ...parameters,
-          }),
-        ).timeout(const Duration(seconds: 15));
+  while (attempts < kMaxRetries) {
+    attempts++;
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'device_id': deviceId,
+          'command': command,
+          ...parameters,
+        }),
+      ).timeout(const Duration(seconds: 15));
 
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          return data['message'] as String? ?? 'Comando enviado com sucesso';
-        } else if (response.statusCode == 401) {
-          throw Exception('Erro 401: Token de autenticação inválido ou ausente.');
-        } else if (response.statusCode == 403) {
-          throw Exception('Erro 403: Acesso negado. Verifique o token.');
-        } else {
-          throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase ?? "Erro desconhecido na API"}');
-        }
-      } on TimeoutException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão: Tempo limite esgotado após $kMaxRetries tentativas.');
-        }
-        await Future.delayed(kRetryDelay);
-      } on SocketException catch (e) {
-        if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão: Verifique o IP/Porta e a rede. ($e)');
-        }
-        await Future.delayed(kRetryDelay);
-      } catch (e) {
-        throw Exception('Falha ao enviar comando: $e');
+      print('Resposta bruta de /api/executeCommand: ${response.body}'); // Log para depuração
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['message']?.toString() ?? 'Comando executado com sucesso';
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
       }
+    } on TimeoutException {
+      if (attempts == kMaxRetries) {
+        throw Exception('Tempo limite esgotado ao enviar comando.');
+      }
+      await Future.delayed(kRetryDelay);
+    } on SocketException {
+      if (attempts == kMaxRetries) {
+        throw Exception('Falha na conexão com o servidor.');
+      }
+      await Future.delayed(kRetryDelay);
+    } catch (e) {
+      throw Exception('Erro ao enviar comando: $e');
     }
-    throw Exception('Falha ao enviar comando após $kMaxRetries tentativas.');
   }
+  throw Exception('Falha ao enviar comando após $kMaxRetries tentativas.');
+}
 }
 
 class UnitConfig {
@@ -262,7 +349,9 @@ class UnitConfig {
       if (await file.exists()) {
         final content = await file.readAsString();
         final json = jsonDecode(content) as List<dynamic>;
-        return json.map((item) => Unit.fromJson(item as Map<String, dynamic>)).toList();
+        return json
+            .map((item) => Unit.fromJson(item as Map<String, dynamic>))
+            .toList();
       }
     } catch (e) {
       print('Erro ao carregar unidades: $e');
@@ -367,7 +456,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
     });
 
     try {
-      final fetchedDevices = await _deviceService.fetchDevices(serverIp, serverPort, token, units);
+      final fetchedDevices = await _deviceService.fetchDevices(
+        serverIp,
+        serverPort,
+        token,
+        units,
+      );
       setState(() {
         devices = fetchedDevices;
         isLoading = false;
@@ -429,95 +523,108 @@ class _MDMDashboardState extends State<MDMDashboard> {
       'Unidade',
     ];
 
-    final rows = devices.map((device) {
-      final lastSeenTime = parseLastSeen(device.lastSeen);
-      final online = isDeviceOnline(lastSeenTime);
-      final inMaintenance = device.maintenanceStatus ?? false;
-      final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
-      return [
-        device.deviceName,
-        device.deviceModel ?? 'N/A',
-        device.imei ?? 'N/A',
-        device.serialNumber ?? 'N/A',
-        status,
-        formatDateTime(lastSeenTime),
-        device.battery != null ? '${device.battery}%' : 'N/A',
-        device.ipAddress ?? 'N/A',
-        device.network ?? 'N/A',
-        device.macAddress ?? 'N/A',
-        inMaintenance ? 'Sim' : 'Não',
-        device.maintenanceTicket ?? 'N/A',
-        device.unit ?? 'N/A',
-      ].map((value) => '"${value.toString().replaceAll('"', '""')}"').join(',');
-    }).toList();
+    final rows =
+        devices.map((device) {
+          final lastSeenTime = parseLastSeen(device.lastSeen);
+          final online = isDeviceOnline(lastSeenTime);
+          final inMaintenance = device.maintenanceStatus ?? false;
+          final status =
+              inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+          return [
+                device.deviceName,
+                device.deviceModel ?? 'N/A',
+                device.imei ?? 'N/A',
+                device.serialNumber ?? 'N/A',
+                status,
+                formatDateTime(lastSeenTime),
+                device.battery != null ? '${device.battery}%' : 'N/A',
+                device.ipAddress ?? 'N/A',
+                device.network ?? 'N/A',
+                device.macAddress ?? 'N/A',
+                inMaintenance ? 'Sim' : 'Não',
+                device.maintenanceTicket ?? 'N/A',
+                device.unit ?? 'N/A',
+              ]
+              .map((value) => '"${value.toString().replaceAll('"', '""')}"')
+              .join(',');
+        }).toList();
 
     final csvContent = [headers.join(','), ...rows].join('\n');
 
     try {
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final path = '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
+      final path =
+          '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
       final file = File(path);
       await file.writeAsString(csvContent);
 
       if (!mounted) return;
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('CSV Salvo'),
-          content: Text('O arquivo CSV foi salvo em:\n$path'),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                try {
-                  final processManager = LocalProcessManager();
-                  if (Platform.isWindows) {
-                    await processManager.run(['explorer.exe', '/select,"$path"']);
-                  } else {
-                    throw Exception('Plataforma não suportada para abrir pasta.');
-                  }
-                  if (!mounted) return;
-                  Navigator.of(context).pop();
-                } catch (e) {
-                  if (!mounted) return;
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Erro'),
-                      content: Text('Falha ao abrir pasta: $e'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('OK'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-              },
-              child: const Text('Abrir Pasta'),
+        builder:
+            (context) => AlertDialog(
+              title: const Text('CSV Salvo'),
+              content: Text('O arquivo CSV foi salvo em:\n$path'),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      final processManager = LocalProcessManager();
+                      if (Platform.isWindows) {
+                        await processManager.run([
+                          'explorer.exe',
+                          '/select,"$path"',
+                        ]);
+                      } else {
+                        throw Exception(
+                          'Plataforma não suportada para abrir pasta.',
+                        );
+                      }
+                      if (!mounted) return;
+                      Navigator.of(context).pop();
+                    } catch (e) {
+                      if (!mounted) return;
+                      showDialog(
+                        context: context,
+                        builder:
+                            (context) => AlertDialog(
+                              title: const Text('Erro'),
+                              content: Text('Falha ao abrir pasta: $e'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                      );
+                    }
+                  },
+                  child: const Text('Abrir Pasta'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
             ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
       );
     } catch (e) {
       if (!mounted) return;
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Erro'),
-          content: Text('Falha ao salvar o CSV: $e'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
+        builder:
+            (context) => AlertDialog(
+              title: const Text('Erro'),
+              content: Text('Falha ao salvar o CSV: $e'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
             ),
-          ],
-        ),
       );
     }
   }
@@ -609,7 +716,10 @@ class _MDMDashboardState extends State<MDMDashboard> {
                       const SizedBox(width: 15),
                       const CircleAvatar(
                         backgroundColor: Colors.blue,
-                        child: Text('AD', style: TextStyle(color: Colors.white)),
+                        child: Text(
+                          'AD',
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ),
                     ],
                   ),
@@ -691,13 +801,41 @@ class _MDMDashboardState extends State<MDMDashboard> {
         const SizedBox(height: 20),
         Row(
           children: [
-            Expanded(child: _buildStatCard('Total de Dispositivos', '${stats['total']}', Icons.smartphone, Colors.blue)),
+            Expanded(
+              child: _buildStatCard(
+                'Total de Dispositivos',
+                '${stats['total']}',
+                Icons.smartphone,
+                Colors.blue,
+              ),
+            ),
             const SizedBox(width: 15),
-            Expanded(child: _buildStatCard('Seguros', '${stats['secure']}', Icons.check_circle, Colors.green)),
+            Expanded(
+              child: _buildStatCard(
+                'Seguros',
+                '${stats['secure']}',
+                Icons.check_circle,
+                Colors.green,
+              ),
+            ),
             const SizedBox(width: 15),
-            Expanded(child: _buildStatCard('Em Risco', '${stats['atRisk']}', Icons.warning, Colors.orange)),
+            Expanded(
+              child: _buildStatCard(
+                'Em Risco',
+                '${stats['atRisk']}',
+                Icons.warning,
+                Colors.orange,
+              ),
+            ),
             const SizedBox(width: 15),
-            Expanded(child: _buildStatCard('Em Manutenção', '${stats['maintenance']}', Icons.build, Colors.blueGrey)),
+            Expanded(
+              child: _buildStatCard(
+                'Em Manutenção',
+                '${stats['maintenance']}',
+                Icons.build,
+                Colors.blueGrey,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 30),
@@ -739,9 +877,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
           ),
         ),
         const SizedBox(height: 20),
-        Expanded(
-          child: _buildManagedDevicesCard(showActions: true),
-        ),
+        Expanded(child: _buildManagedDevicesCard(showActions: true)),
       ],
     );
   }
@@ -839,7 +975,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
               const SizedBox(height: 20),
               const Text('Política de Senha: Ativada'),
               const Text('Criptografia: AES-256'),
-              Text('Última Verificação de Segurança: ${formatDateTime(DateTime.now())}'),
+              Text(
+                'Última Verificação de Segurança: ${formatDateTime(DateTime.now())}',
+              ),
             ],
           ),
         ),
@@ -910,7 +1048,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 children: [
                   TableRow(
                     decoration: BoxDecoration(
-                      border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[300]!),
+                      ),
                     ),
                     children: [
                       _buildTableHeader('Nome'),
@@ -921,16 +1061,34 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   TableRow(
                     children: [
                       const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                        child: Text('João Silva', style: TextStyle(fontSize: 14)),
+                        padding: EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 8,
+                        ),
+                        child: Text(
+                          'João Silva',
+                          style: TextStyle(fontSize: 14),
+                        ),
                       ),
                       const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                        child: Text('Administrador', style: TextStyle(fontSize: 14)),
+                        padding: EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 8,
+                        ),
+                        child: Text(
+                          'Administrador',
+                          style: TextStyle(fontSize: 14),
+                        ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                        child: Text('Ativo', style: TextStyle(fontSize: 14, color: Colors.green)),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 8,
+                        ),
+                        child: Text(
+                          'Ativo',
+                          style: TextStyle(fontSize: 14, color: Colors.green),
+                        ),
                       ),
                     ],
                   ),
@@ -1060,22 +1218,28 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 ),
                 const SizedBox(height: 20),
                 Expanded(
-                  child: alerts.isEmpty
-                      ? Center(
-                          child: Text(
-                            'Nenhum alerta disponível',
-                            style: TextStyle(color: Colors.grey[600]),
+                  child:
+                      alerts.isEmpty
+                          ? Center(
+                            child: Text(
+                              'Nenhum alerta disponível',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          )
+                          : ListView(
+                            children:
+                                alerts
+                                    .map(
+                                      (alert) => _buildAlertItem(
+                                        alert['icon'] as IconData,
+                                        alert['title'] as String,
+                                        alert['subtitle'] as String,
+                                        alert['time'] as String,
+                                        alert['color'] as Color,
+                                      ),
+                                    )
+                                    .toList(),
                           ),
-                        )
-                      : ListView(
-                          children: alerts.map((alert) => _buildAlertItem(
-                                alert['icon'] as IconData,
-                                alert['title'] as String,
-                                alert['subtitle'] as String,
-                                alert['time'] as String,
-                                alert['color'] as Color,
-                              )).toList(),
-                        ),
                 ),
               ],
             ),
@@ -1245,7 +1409,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 children: [
                   TableRow(
                     decoration: BoxDecoration(
-                      border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[300]!),
+                      ),
                     ),
                     children: [
                       _buildTableHeader('Nome da Unidade'),
@@ -1260,27 +1426,56 @@ class _MDMDashboardState extends State<MDMDashboard> {
                     return TableRow(
                       children: [
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          child: Text(unit.name, style: const TextStyle(fontSize: 14)),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          child: Text(
+                            unit.name,
+                            style: const TextStyle(fontSize: 14),
+                          ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          child: Text(unit.ipRangeStart, style: const TextStyle(fontSize: 14)),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          child: Text(
+                            unit.ipRangeStart,
+                            style: const TextStyle(fontSize: 14),
+                          ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          child: Text(unit.ipRangeEnd, style: const TextStyle(fontSize: 14)),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          child: Text(
+                            unit.ipRangeEnd,
+                            style: const TextStyle(fontSize: 14),
+                          ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
                           child: Row(
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.edit, size: 20),
-                                onPressed: () => _showUnitDialog(unit: unit, index: index),
+                                onPressed:
+                                    () => _showUnitDialog(
+                                      unit: unit,
+                                      index: index,
+                                    ),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                                icon: const Icon(
+                                  Icons.delete,
+                                  size: 20,
+                                  color: Colors.red,
+                                ),
                                 onPressed: () => _deleteUnit(index),
                               ),
                             ],
@@ -1305,109 +1500,119 @@ class _MDMDashboardState extends State<MDMDashboard> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(unit == null ? 'Adicionar Unidade' : 'Editar Unidade'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Nome da Unidade',
-                border: OutlineInputBorder(),
-              ),
+      builder:
+          (context) => AlertDialog(
+            title: Text(unit == null ? 'Adicionar Unidade' : 'Editar Unidade'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome da Unidade',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: startIpController,
+                  decoration: const InputDecoration(
+                    labelText: 'IP Inicial (ex.: 192.168.0.1)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: endIpController,
+                  decoration: const InputDecoration(
+                    labelText: 'IP Final (ex.: 192.168.0.100)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: startIpController,
-              decoration: const InputDecoration(
-                labelText: 'IP Inicial (ex.: 192.168.0.1)',
-                border: OutlineInputBorder(),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
               ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: endIpController,
-              decoration: const InputDecoration(
-                labelText: 'IP Final (ex.: 192.168.0.100)',
-                border: OutlineInputBorder(),
+              TextButton(
+                onPressed: () {
+                  final name = nameController.text.trim();
+                  final startIp = startIpController.text.trim();
+                  final endIp = endIpController.text.trim();
+
+                  if (name.isEmpty || startIp.isEmpty || endIp.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Todos os campos são obrigatórios'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (!_isValidIp(startIp) || !_isValidIp(endIp)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Endereços IP inválidos')),
+                    );
+                    return;
+                  }
+
+                  final newUnit = Unit(
+                    name: name,
+                    ipRangeStart: startIp,
+                    ipRangeEnd: endIp,
+                  );
+                  setState(() {
+                    if (index == null) {
+                      units.add(newUnit);
+                    } else {
+                      units[index] = newUnit;
+                    }
+                  });
+                  UnitConfig.saveUnits(units);
+                  _loadDevices(); // Atualizar unidades dos dispositivos
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Salvar'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
+            ],
           ),
-          TextButton(
-            onPressed: () {
-              final name = nameController.text.trim();
-              final startIp = startIpController.text.trim();
-              final endIp = endIpController.text.trim();
-
-              if (name.isEmpty || startIp.isEmpty || endIp.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Todos os campos são obrigatórios')),
-                );
-                return;
-              }
-
-              if (!_isValidIp(startIp) || !_isValidIp(endIp)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Endereços IP inválidos')),
-                );
-                return;
-              }
-
-              final newUnit = Unit(name: name, ipRangeStart: startIp, ipRangeEnd: endIp);
-              setState(() {
-                if (index == null) {
-                  units.add(newUnit);
-                } else {
-                  units[index] = newUnit;
-                }
-              });
-              UnitConfig.saveUnits(units);
-              _loadDevices(); // Atualizar unidades dos dispositivos
-              Navigator.of(context).pop();
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
-      ),
     );
   }
 
   bool _isValidIp(String ip) {
-    final regex = RegExp(r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$');
+    final regex = RegExp(
+      r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$',
+    );
     return regex.hasMatch(ip);
   }
 
   void _deleteUnit(int index) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirmar Exclusão'),
-        content: const Text('Deseja excluir esta unidade?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Confirmar Exclusão'),
+            content: const Text('Deseja excluir esta unidade?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    units.removeAt(index);
+                  });
+                  UnitConfig.saveUnits(units);
+                  _loadDevices();
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Excluir'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                units.removeAt(index);
-              });
-              UnitConfig.saveUnits(units);
-              _loadDevices();
-              Navigator.of(context).pop();
-            },
-            child: const Text('Excluir'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1434,7 +1639,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1456,10 +1666,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
             children: [
               Text(
                 title,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: Colors.grey[600], fontSize: 14),
               ),
               const Spacer(),
               Icon(icon, color: color, size: 20),
@@ -1537,7 +1744,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 children: [
                   TableRow(
                     decoration: BoxDecoration(
-                      border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[300]!),
+                      ),
                     ),
                     children: [
                       _buildTableHeader('Dispositivo'),
@@ -1550,7 +1759,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
                       if (showActions) _buildTableHeader('Ações'),
                     ],
                   ),
-                  ...devices.map((device) => _buildDeviceRowFromDevice(device, showActions: showActions)),
+                  ...devices.map(
+                    (device) => _buildDeviceRowFromDevice(
+                      device,
+                      showActions: showActions,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1620,31 +1834,34 @@ class _MDMDashboardState extends State<MDMDashboard> {
               const Spacer(),
               Text(
                 'Ver Todos',
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: Colors.blue, fontSize: 12),
               ),
             ],
           ),
           const SizedBox(height: 15),
           Expanded(
-            child: limitedAlerts.isEmpty
-                ? Center(
-                    child: Text(
-                      'Nenhum alerta recente',
-                      style: TextStyle(color: Colors.grey[600]),
+            child:
+                limitedAlerts.isEmpty
+                    ? Center(
+                      child: Text(
+                        'Nenhum alerta recente',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    )
+                    : Column(
+                      children:
+                          limitedAlerts
+                              .map(
+                                (alert) => _buildAlertItem(
+                                  alert['icon'] as IconData,
+                                  alert['title'] as String,
+                                  alert['subtitle'] as String,
+                                  alert['time'] as String,
+                                  alert['color'] as Color,
+                                ),
+                              )
+                              .toList(),
                     ),
-                  )
-                : Column(
-                    children: limitedAlerts.map((alert) => _buildAlertItem(
-                          alert['icon'] as IconData,
-                          alert['title'] as String,
-                          alert['subtitle'] as String,
-                          alert['time'] as String,
-                          alert['color'] as Color,
-                        )).toList(),
-                  ),
           ),
         ],
       ),
@@ -1706,10 +1923,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
           const SizedBox(height: 15),
           Text(
             'Servidor: $serverIp:$serverPort',
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.grey[500],
-            ),
+            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
           ),
         ],
       ),
@@ -1730,12 +1944,17 @@ class _MDMDashboardState extends State<MDMDashboard> {
     );
   }
 
-  TableRow _buildDeviceRowFromDevice(Device device, {required bool showActions}) {
+  TableRow _buildDeviceRowFromDevice(
+    Device device, {
+    required bool showActions,
+  }) {
     final lastSeenTime = parseLastSeen(device.lastSeen);
     final online = isDeviceOnline(lastSeenTime);
     final inMaintenance = device.maintenanceStatus ?? false;
-    final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
-    final statusColor = inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
+    final status =
+        inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+    final statusColor =
+        inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
 
     IconData deviceIcon = Icons.smartphone;
     final modelLower = device.deviceModel?.toLowerCase() ?? '';
@@ -1743,7 +1962,8 @@ class _MDMDashboardState extends State<MDMDashboard> {
       deviceIcon = Icons.phone_iphone;
     } else if (modelLower.contains('ipad')) {
       deviceIcon = Icons.tablet_mac;
-    } else if (modelLower.contains('laptop') || modelLower.contains('thinkpad')) {
+    } else if (modelLower.contains('laptop') ||
+        modelLower.contains('thinkpad')) {
       deviceIcon = Icons.laptop;
     }
 
@@ -1763,8 +1983,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      device.deviceName,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      device.deviceName ?? 'N/A',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (device.battery != null && device.battery! > 0)
@@ -1785,15 +2008,27 @@ class _MDMDashboardState extends State<MDMDashboard> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(device.deviceModel ?? 'N/A', style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
+          child: Text(
+            device.deviceModel ?? 'N/A',
+            style: const TextStyle(fontSize: 14),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(device.imei ?? 'N/A', style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
+          child: Text(
+            device.imei ?? 'N/A',
+            style: const TextStyle(fontSize: 14),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(device.serialNumber ?? 'N/A', style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
+          child: Text(
+            device.serialNumber ?? 'N/A',
+            style: const TextStyle(fontSize: 14),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -1832,13 +2067,24 @@ class _MDMDashboardState extends State<MDMDashboard> {
         if (showActions)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-            child: _CommandControls(device: device, serverIp: serverIp, serverPort: serverPort, token: token),
+            child: _CommandControls(
+              device: device,
+              serverIp: serverIp,
+              serverPort: serverPort,
+              token: token,
+            ),
           ),
       ],
     );
   }
 
-  Widget _buildAlertItem(IconData icon, String title, String subtitle, String time, Color color) {
+  Widget _buildAlertItem(
+    IconData icon,
+    String title,
+    String subtitle,
+    String time,
+    Color color,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -1866,18 +2112,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 ),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   time,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 10, color: Colors.grey[500]),
                 ),
               ],
             ),
@@ -1896,18 +2136,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
           children: [
             Text(
               label,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 13,
-              ),
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
             ),
             const Spacer(),
             Text(
               '$percentage%',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -1970,11 +2204,21 @@ class __CommandControlsState extends State<_CommandControls> {
             isExpanded: true,
             items: [
               const DropdownMenuItem(value: 'lock', child: Text('Bloquear')),
-              const DropdownMenuItem(value: 'uninstall_app', child: Text('Desinstalar App')),
-              const DropdownMenuItem(value: 'install_app', child: Text('Instalar App')),
+              const DropdownMenuItem(
+                value: 'uninstall_app',
+                child: Text('Desinstalar App'),
+              ),
+              const DropdownMenuItem(
+                value: 'install_app',
+                child: Text('Instalar App'),
+              ),
               DropdownMenuItem(
                 value: 'set_maintenance',
-                child: Text(inMaintenance ? 'Retornar à Produção' : 'Marcar como Manutenção'),
+                child: Text(
+                  inMaintenance
+                      ? 'Retornar à Produção'
+                      : 'Marcar como Manutenção',
+                ),
               ),
             ],
             onChanged: (value) {
@@ -2025,7 +2269,11 @@ class __CommandControlsState extends State<_CommandControls> {
               child: ElevatedButton(
                 onPressed: () async {
                   try {
-                    final parameters = <String, String>{};
+                    final parameters =
+                        <
+                          String,
+                          dynamic
+                        >{}; // Alterado para dynamic para suportar booleanos
                     if (selectedCommand == 'uninstall_app') {
                       if (packageController.text.trim().isEmpty) {
                         throw Exception('Nome do Pacote é obrigatório.');
@@ -2040,38 +2288,53 @@ class __CommandControlsState extends State<_CommandControls> {
                       if (inMaintenance) {
                         final confirm = await showDialog<bool>(
                           context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Confirmar Retorno à Produção'),
-                            content: const Text('Deseja retornar este dispositivo à produção? O status de manutenção será removido.'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(false),
-                                child: const Text('Cancelar'),
+                          builder:
+                              (context) => AlertDialog(
+                                title: const Text(
+                                  'Confirmar Retorno à Produção',
+                                ),
+                                content: const Text(
+                                  'Deseja retornar este dispositivo à produção? O status de manutenção será removido.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(true),
+                                    child: const Text('Confirmar'),
+                                  ),
+                                ],
                               ),
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(true),
-                                child: const Text('Confirmar'),
-                              ),
-                            ],
-                          ),
                         );
                         if (confirm != true) return;
-                        parameters['maintenance_status'] = 'false';
+                        parameters['maintenance_status'] =
+                            false; // Enviar como booleano
                         parameters['maintenance_ticket'] = '';
                       } else {
                         if (ticketController.text.trim().isEmpty) {
                           throw Exception('Número do Chamado é obrigatório.');
                         }
-                        parameters['maintenance_status'] = 'true';
-                        parameters['maintenance_ticket'] = ticketController.text.trim();
+                        parameters['maintenance_status'] =
+                            true; // Enviar como booleano
+                        parameters['maintenance_ticket'] =
+                            ticketController.text.trim();
                       }
                       parameters['maintenance_history_entry'] = jsonEncode({
                         'timestamp': DateTime.now().toIso8601String(),
-                        'status': inMaintenance ? 'returned_to_production' : 'entered_maintenance',
-                        'ticket': inMaintenance ? null : ticketController.text.trim(),
+                        'status':
+                            inMaintenance
+                                ? 'returned_to_production'
+                                : 'entered_maintenance',
+                        'ticket':
+                            inMaintenance ? null : ticketController.text.trim(),
                       });
                     }
-                    final deviceId = widget.device.deviceId ?? widget.device.imei ?? '';
+                    final deviceId =
+                        widget.device.deviceId ?? widget.device.imei ?? '';
                     final message = await _deviceService.sendCommand(
                       widget.serverIp,
                       widget.serverPort,
@@ -2083,34 +2346,36 @@ class __CommandControlsState extends State<_CommandControls> {
                     if (!mounted) return;
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Sucesso'),
-                        content: Text(message),
-                        actions: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              _refreshDevices();
-                            },
-                            child: const Text('OK'),
+                      builder:
+                          (context) => AlertDialog(
+                            title: const Text('Sucesso'),
+                            content: Text(message),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  _refreshDevices();
+                                },
+                                child: const Text('OK'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
                     );
                   } catch (e) {
                     if (!mounted) return;
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Erro'),
-                        content: Text(e.toString()),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('OK'),
+                      builder:
+                          (context) => AlertDialog(
+                            title: const Text('Erro'),
+                            content: Text(e.toString()),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('OK'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
                     );
                   }
                 },
