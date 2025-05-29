@@ -74,17 +74,21 @@ class Unit {
     required this.ipRangeEnd,
   });
 
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'ipRangeStart': ipRangeStart,
-    'ipRangeEnd': ipRangeEnd,
-  };
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'ip_range_start': ipRangeStart,
+      'ip_range_end': ipRangeEnd,
+    };
+  }
 
-  factory Unit.fromJson(Map<String, dynamic> json) => Unit(
-    name: json['name'] as String,
-    ipRangeStart: json['ipRangeStart'] as String,
-    ipRangeEnd: json['ipRangeEnd'] as String,
-  );
+  static Unit fromJson(Map<String, dynamic> json) {
+    return Unit(
+      name: json['name'] as String,
+      ipRangeStart: json['ip_range_start'] as String,
+      ipRangeEnd: json['ip_range_end'] as String,
+    );
+  }
 }
 
 class Device {
@@ -232,12 +236,177 @@ class Device {
 }
 
 class DeviceService {
+  Future<String> deleteUnit(String ip, String port, String token, String unitName) async {
+  final url = 'http://$ip:$port/api/units/$unitName';
+  int attempts = 0;
+
+  while (attempts < kMaxRetries) {
+    attempts++;
+    try {
+      final response = await http
+          .delete(
+            Uri.parse(url),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      print('Resposta bruta de /api/units/$unitName: ${response.body}'); // Log para depuração
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['message']?.toString() ?? 'Unidade excluída com sucesso';
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
+      }
+    } on TimeoutException {
+      if (attempts == kMaxRetries) {
+        throw Exception('Tempo limite esgotado ao excluir unidade.');
+      }
+      await Future.delayed(kRetryDelay);
+    } on SocketException {
+      if (attempts == kMaxRetries) {
+        throw Exception('Falha na conexão com o servidor.');
+      }
+      await Future.delayed(kRetryDelay);
+    } catch (e) {
+      throw Exception('Erro ao excluir unidade: $e');
+    }
+  }
+  throw Exception('Falha ao excluir unidade após $kMaxRetries tentativas.');
+}
+  Future<String> createUnit(String ip, String port, String token, Unit unit) async {
+    final url = 'http://$ip:$port/api/units';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http
+            .post(
+              Uri.parse(url),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(unit.toJson()),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 201) {
+          return 'Unidade criada com sucesso';
+        } else {
+          final errorData = jsonDecode(response.body);
+          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Tempo limite esgotado ao criar unidade.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão com o servidor.');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Erro ao criar unidade: $e');
+      }
+    }
+    throw Exception('Falha ao criar unidade após $kMaxRetries tentativas.');
+  }
+
+  Future<String> updateUnit(String ip, String port, String token, String unitName, Unit unit) async {
+    final url = 'http://$ip:$port/api/units/$unitName';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http
+            .put(
+              Uri.parse(url),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(unit.toJson()),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          return 'Unidade atualizada com sucesso';
+        } else {
+          final errorData = jsonDecode(response.body);
+          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Tempo limite esgotado ao atualizar unidade.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão com o servidor.');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Erro ao atualizar unidade: $e');
+      }
+    }
+    throw Exception('Falha ao atualizar unidade após $kMaxRetries tentativas.');
+  }
+
   Future<List<Device>> fetchDevices(
   String ip,
   String port,
   String token,
   List<Unit> units,
 ) async {
+
+  Future<String> deleteUnit(String ip, String port, String token, String unitName) async {
+    final url = 'http://$ip:$port/api/units/$unitName';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http
+            .delete(
+              Uri.parse(url),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return data['message']?.toString() ?? 'Unidade excluída com sucesso';
+        } else {
+          final errorData = jsonDecode(response.body);
+          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Tempo limite esgotado ao excluir unidade.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão com o servidor.');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Erro ao excluir unidade: $e');
+      }
+    }
+    throw Exception('Falha ao excluir unidade após $kMaxRetries tentativas.');
+  }
   final url = 'http://$ip:$port/api/devices';
   int attempts = 0;
 
@@ -302,6 +471,8 @@ class DeviceService {
   String serialNumber,
   String command,
   Map<String, dynamic> parameters,
+
+  
 ) async {
   final url = 'http://$ip:$port/api/executeCommand'; // Corrigido para a rota correta
   int attempts = 0;
@@ -399,7 +570,198 @@ class DeviceService {
   }
   throw Exception('Falha ao excluir dispositivo após $kMaxRetries tentativas.');
 }
+
+
+Future<List<BssidMapping>> fetchBssidMappings(
+      String ip, String port, String token) async {
+    final url = 'http://$ip:$port/api/bssid-mappings';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http
+            .get(Uri.parse(url), headers: {'Authorization': 'Bearer $token'})
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data is List) {
+            return data
+                .map((json) => BssidMapping.fromJson(json as Map<String, dynamic>))
+                .toList();
+          }
+          throw Exception('Resposta inválida: Esperado uma lista de mapeamentos');
+        } else {
+          throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Tempo limite esgotado após $kMaxRetries tentativas.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException catch (e) {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão: $e');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Falha inesperada: $e');
+      }
+    }
+    return [];
+  }
+
+  Future<String> createBssidMapping(
+      String ip, String port, String token, BssidMapping mapping) async {
+    final url = 'http://$ip:$port/api/bssid-mappings';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http
+            .post(
+              Uri.parse(url),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(mapping.toJson()),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 201) {
+          return 'Mapeamento de BSSID criado com sucesso';
+        } else {
+          final errorData = jsonDecode(response.body);
+          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Tempo limite esgotado ao criar mapeamento.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão com o servidor.');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Erro ao criar mapeamento: $e');
+      }
+    }
+    throw Exception('Falha ao criar mapeamento após $kMaxRetries tentativas.');
+  }
+
+  Future<String> updateBssidMapping(String ip, String port, String token,
+      String macAddressRadio, BssidMapping mapping) async {
+    final url = 'http://$ip:$port/api/bssid-mappings/$macAddressRadio';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http
+            .put(
+              Uri.parse(url),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(mapping.toJson()),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          return 'Mapeamento de BSSID atualizado com sucesso';
+        } else {
+          final errorData = jsonDecode(response.body);
+          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Tempo limite esgotado ao atualizar mapeamento.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão com o servidor.');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Erro ao atualizar mapeamento: $e');
+      }
+    }
+    throw Exception('Falha ao atualizar mapeamento após $kMaxRetries tentativas.');
+  }
+
+  Future<String> deleteBssidMapping(
+      String ip, String port, String token, String macAddressRadio) async {
+    final url = 'http://$ip:$port/api/bssid-mappings/$macAddressRadio';
+    int attempts = 0;
+
+    while (attempts < kMaxRetries) {
+      attempts++;
+      try {
+        final response = await http
+            .delete(
+              Uri.parse(url),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          return 'Mapeamento de BSSID excluído com sucesso';
+        } else {
+          final errorData = jsonDecode(response.body);
+          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
+        }
+      } on TimeoutException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Tempo limite esgotado ao excluir mapeamento.');
+        }
+        await Future.delayed(kRetryDelay);
+      } on SocketException {
+        if (attempts == kMaxRetries) {
+          throw Exception('Falha na conexão com o servidor.');
+        }
+        await Future.delayed(kRetryDelay);
+      } catch (e) {
+        throw Exception('Erro ao excluir mapeamento: $e');
+      }
+    }
+    throw Exception('Falha ao excluir mapeamento após $kMaxRetries tentativas.');
+  }
 }
+
+class BssidMapping {
+  final String macAddressRadio;
+  final String sector;
+  final String floor;
+
+  BssidMapping({
+    required this.macAddressRadio,
+    required this.sector,
+    required this.floor,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'mac_address_radio': macAddressRadio,
+        'sector': sector,
+        'floor': floor,
+      };
+
+  factory BssidMapping.fromJson(Map<String, dynamic> json) => BssidMapping(
+        macAddressRadio: json['mac_address_radio'] as String,
+        sector: json['sector'] as String,
+        floor: json['floor'] as String,
+      );
+}
+
 
 class UnitConfig {
   static Future<List<Unit>> loadUnits() async {
@@ -467,7 +829,10 @@ class _MDMDashboardState extends State<MDMDashboard> {
   String? errorMessage;
   final DeviceService _deviceService = DeviceService();
   Timer? _refreshTimer;
-  String _deviceFilter = 'Todos'; // Novo estado para filtro
+  String _deviceFilter = 'Todos';
+  List<BssidMapping> bssidMappings = [];
+
+   // Novo estado para filtro
 
   // Configurações de conexão
   String serverIp = '192.168.0.183';
@@ -482,137 +847,149 @@ class _MDMDashboardState extends State<MDMDashboard> {
   // Método para construir os itens do menu
 
   TableRow _buildDeviceTableRow(Device device, {required bool showActions}) {
-    final lastSeenTime = parseLastSeen(device.lastSeen);
-    final online = isDeviceOnline(lastSeenTime);
-    final inMaintenance = device.maintenanceStatus ?? false;
-    final status =
-        inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
-    final statusColor =
-        inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
+  final lastSeenTime = parseLastSeen(device.lastSeen);
+  final online = isDeviceOnline(lastSeenTime);
+  final inMaintenance = device.maintenanceStatus ?? false;
+  final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+  final statusColor = inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
 
-    IconData deviceIcon = Icons.smartphone;
-    final modelLower = device.deviceModel?.toLowerCase() ?? '';
-    if (modelLower.contains('iphone')) {
-      deviceIcon = Icons.phone_iphone;
-    } else if (modelLower.contains('ipad')) {
-      deviceIcon = Icons.tablet_mac;
-    } else if (modelLower.contains('laptop') ||
-        modelLower.contains('thinkpad')) {
-      deviceIcon = Icons.laptop;
-    }
-
-    return TableRow(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
-      ),
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Row(
-            children: [
-              Icon(deviceIcon, size: 20, color: Colors.grey[600]),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      device.deviceName ?? 'N/A',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (device.battery != null && device.battery! > 0)
-                      Text(
-                        'Bateria: ${device.battery}%',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                      ),
-                    if (inMaintenance && device.maintenanceTicket != null)
-                      Text(
-                        'Chamado: ${device.maintenanceTicket}',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            device.deviceModel ?? 'N/A',
-            style: const TextStyle(fontSize: 14),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            device.serialNumber ?? 'N/A',
-            style: const TextStyle(fontSize: 14),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            device.imei ?? 'N/A',
-            style: const TextStyle(fontSize: 14),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              status,
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            formatDateTime(lastSeenTime),
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            device.unit ?? 'N/A',
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        if (showActions)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-            child: _CommandControls(
-              device: device,
-              serverIp: serverIp,
-              serverPort: serverPort,
-              token: token,
-              onDelete:
-                  () => _deleteDevice(device), // Passar callback para exclusão
-            ),
-          ),
-      ],
-    );
+  IconData deviceIcon = Icons.smartphone;
+  final modelLower = device.deviceModel?.toLowerCase() ?? '';
+  if (modelLower.contains('iphone')) {
+    deviceIcon = Icons.phone_iphone;
+  } else if (modelLower.contains('ipad')) {
+    deviceIcon = Icons.tablet_mac;
+  } else if (modelLower.contains('laptop') || modelLower.contains('thinkpad')) {
+    deviceIcon = Icons.laptop;
   }
+
+  return TableRow(
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+    ),
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Row(
+          children: [
+            Icon(deviceIcon, size: 20, color: Colors.grey[600]),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    device.deviceName ?? 'N/A',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (device.battery != null && device.battery! > 0)
+                    Text(
+                      'Bateria: ${device.battery}%',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
+                  if (inMaintenance && device.maintenanceTicket != null)
+                    Text(
+                      'Chamado: ${device.maintenanceTicket}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.deviceModel ?? 'N/A',
+          style: const TextStyle(fontSize: 14),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.serialNumber ?? 'N/A',
+          style: const TextStyle(fontSize: 14),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.imei ?? 'N/A',
+          style: const TextStyle(fontSize: 14),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            status,
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          formatDateTime(lastSeenTime),
+          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.unit ?? 'N/A',
+          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.sector ?? 'N/A',
+          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Text(
+          device.floor ?? 'N/A',
+          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      if (showActions)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: _CommandControls(
+            device: device,
+            serverIp: serverIp,
+            serverPort: serverPort,
+            token: token,
+            onDelete: () => _deleteDevice(device),
+          ),
+        ),
+    ],
+  );
+}
 
   void _deleteDevice(Device device) async {
   try {
@@ -643,18 +1020,69 @@ class _MDMDashboardState extends State<MDMDashboard> {
 }
 
   @override
-  void initState() {
-    super.initState();
-    _ipController = TextEditingController(text: serverIp);
-    _portController = TextEditingController(text: serverPort);
-    _tokenController = TextEditingController(text: token);
-    _loadUnits();
-    _loadDevices();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
-      if (mounted) {
-        _loadDevices();
-      }
-    });
+void initState() {
+  super.initState();
+  _ipController = TextEditingController(text: serverIp);
+  _portController = TextEditingController(text: serverPort);
+  _tokenController = TextEditingController(text: token);
+  _loadBssidMappings();
+  _loadDevices();
+  _loadUnits();
+  _initialize(); // Call the separate async initialization method
+}
+
+Future<void> _initialize() async {
+  await _loadUnits();
+  await _loadBssidMappings();
+  await _loadDevices();
+  _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+    if (mounted) {
+      _loadDevices();
+      _loadBssidMappings();
+    }
+  });
+}
+  Future<void> _loadUnits() async {
+  try {
+    final response = await http.get(
+      Uri.parse('http://$serverIp:$serverPort/api/units'),
+      headers: {'Authorization': 'Bearer hap@2025', 'Content-Type': 'application/json'},
+    );
+    print('Resposta de /api/units: ${response.statusCode} - ${response.body}');
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      print('Dados brutos do servidor: $data');
+      final loadedUnits = data.map((json) => Unit.fromJson(json)).toList();
+      print('Unidades mapeadas: $loadedUnits');
+      setState(() {
+        units = loadedUnits; // Atualiza a lista de unidades
+      });
+      print('Unidades após setState: $units');
+    } else {
+      throw Exception('Falha ao carregar unidades: ${response.body}');
+    }
+  } catch (e) {
+    print('Erro ao carregar unidades: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao carregar unidades: $e')),
+      );
+    }
+  }
+}
+
+
+  Future<void> _loadBssidMappings() async {
+    try {
+      final mappings = await _deviceService.fetchBssidMappings(serverIp, serverPort, token);
+      setState(() {
+        bssidMappings = mappings;
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Erro ao carregar mapeamentos de BSSID: $e';
+      });
+    }
   }
 
   @override
@@ -664,13 +1092,6 @@ class _MDMDashboardState extends State<MDMDashboard> {
     _portController.dispose();
     _tokenController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadUnits() async {
-    final loadedUnits = await UnitConfig.loadUnits();
-    setState(() {
-      units = loadedUnits;
-    });
   }
 
   Future<void> _loadDevices() async {
@@ -731,127 +1152,121 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Future<void> _downloadDevicesCsv() async {
-    final headers = [
-      'Dispositivo',
-      'Modelo',
-      'IMEI',
-      'Serial',
-      'Status',
-      'Última Sincronização',
-      'Bateria',
-      'Endereço IP',
-      'Rede',
-      'Endereço MAC',
-      'Em Manutenção',
-      'Chamado',
-      'Unidade',
-    ];
+  final headers = [
+    'Dispositivo',
+    'Modelo',
+    'IMEI',
+    'Serial',
+    'Status',
+    'Última Sincronização',
+    'Bateria',
+    'Endereço IP',
+    'Rede',
+    'Endereço MAC',
+    'Em Manutenção',
+    'Chamado',
+    'Unidade',
+    'Setor',
+    'Andar',
+  ];
 
-    final rows =
-        devices.map((device) {
-          final lastSeenTime = parseLastSeen(device.lastSeen);
-          final online = isDeviceOnline(lastSeenTime);
-          final inMaintenance = device.maintenanceStatus ?? false;
-          final status =
-              inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
-          return [
-                device.deviceName,
-                device.deviceModel ?? 'N/A',
-                device.imei ?? 'N/A',
-                device.serialNumber ?? 'N/A',
-                status,
-                formatDateTime(lastSeenTime),
-                device.battery != null ? '${device.battery}%' : 'N/A',
-                device.ipAddress ?? 'N/A',
-                device.network ?? 'N/A',
-                device.macAddress ?? 'N/A',
-                inMaintenance ? 'Sim' : 'Não',
-                device.maintenanceTicket ?? 'N/A',
-                device.unit ?? 'N/A',
-              ]
-              .map((value) => '"${value.toString().replaceAll('"', '""')}"')
-              .join(',');
-        }).toList();
+  final rows = devices.map((device) {
+    final lastSeenTime = parseLastSeen(device.lastSeen);
+    final online = isDeviceOnline(lastSeenTime);
+    final inMaintenance = device.maintenanceStatus ?? false;
+    final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+    return [
+      device.deviceName,
+      device.deviceModel ?? 'N/A',
+      device.imei ?? 'N/A',
+      device.serialNumber ?? 'N/A',
+      status,
+      formatDateTime(lastSeenTime),
+      device.battery != null ? '${device.battery}%' : 'N/A',
+      device.ipAddress ?? 'N/A',
+      device.network ?? 'N/A',
+      device.macAddress ?? 'N/A',
+      inMaintenance ? 'Sim' : 'Não',
+      device.maintenanceTicket ?? 'N/A',
+      device.unit ?? 'N/A',
+      device.sector ?? 'N/A',
+      device.floor ?? 'N/A',
+    ].map((value) => '"${value.toString().replaceAll('"', '""')}"').join(',');
+  }).toList();
 
-    final csvContent = [headers.join(','), ...rows].join('\n');
+  final csvContent = [headers.join(','), ...rows].join('\n');
 
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final path =
-          '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
-      final file = File(path);
-      await file.writeAsString(csvContent);
+  try {
+    final directory = await getApplicationDocumentsDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final path = '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
+    final file = File(path);
+    await file.writeAsString(csvContent);
 
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              title: const Text('CSV Salvo'),
-              content: Text('O arquivo CSV foi salvo em:\n$path'),
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    try {
-                      final processManager = LocalProcessManager();
-                      if (Platform.isWindows) {
-                        await processManager.run([
-                          'explorer.exe',
-                          '/select,"$path"',
-                        ]);
-                      } else {
-                        throw Exception(
-                          'Plataforma não suportada para abrir pasta.',
-                        );
-                      }
-                      if (!mounted) return;
-                      Navigator.of(context).pop();
-                    } catch (e) {
-                      if (!mounted) return;
-                      showDialog(
-                        context: context,
-                        builder:
-                            (context) => AlertDialog(
-                              title: const Text('Erro'),
-                              content: Text('Falha ao abrir pasta: $e'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.of(context).pop(),
-                                  child: const Text('OK'),
-                                ),
-                              ],
-                            ),
-                      );
-                    }
-                  },
-                  child: const Text('Abrir Pasta'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              title: const Text('Erro'),
-              content: Text('Falha ao salvar o CSV: $e'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-      );
-    }
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('CSV Salvo'),
+        content: Text('O arquivo CSV foi salvo em:\n$path'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              try {
+                final processManager = LocalProcessManager();
+                if (Platform.isWindows) {
+                  await processManager.run([
+                    'explorer.exe',
+                    '/select,"$path"',
+                  ]);
+                } else {
+                  throw Exception('Plataforma não suportada para abrir pasta.');
+                }
+                if (!mounted) return;
+                Navigator.of(context).pop();
+              } catch (e) {
+                if (!mounted) return;
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Erro'),
+                    content: Text('Falha ao abrir pasta: $e'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            },
+            child: const Text('Abrir Pasta'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Erro'),
+        content: Text('Falha ao salvar o CSV: $e'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
+}
 
   List<Device> _filterDevices() {
     return devices.where((device) {
@@ -1685,12 +2100,13 @@ class _MDMDashboardState extends State<MDMDashboard> {
     );
   }
 
+  @override
   Widget _buildUnitsTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Unidades',
+          'Unidades e Localização',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -1715,30 +2131,54 @@ class _MDMDashboardState extends State<MDMDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                'Gerenciamento de Unidades',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
+              ),
+              const SizedBox(height: 20),
               Row(
                 children: [
-                  Text(
-                    'Gerenciamento de Unidades',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showUnitDialog(),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Adicionar Unidade'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  ElevatedButton.icon(
-                    onPressed: () => _showUnitDialog(),
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Adicionar Unidade'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showBssidMappingDialog(),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Adicionar Mapeamento BSSID'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
+              Text(
+                'Unidades (Faixas de IP)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+              const SizedBox(height: 10),
               Table(
                 columnWidths: const {
                   0: FlexColumnWidth(2),
@@ -1804,11 +2244,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.edit, size: 20),
-                                onPressed:
-                                    () => _showUnitDialog(
-                                      unit: unit,
-                                      index: index,
-                                    ),
+                                onPressed: () => _showUnitDialog(unit: unit, index: index),
                               ),
                               IconButton(
                                 icon: const Icon(
@@ -1826,98 +2262,303 @@ class _MDMDashboardState extends State<MDMDashboard> {
                   }),
                 ],
               ),
+              const SizedBox(height: 20),
+              Text(
+                'Mapeamentos de BSSID (Setor/Andar)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Table(
+                columnWidths: const {
+                  0: FlexColumnWidth(2),
+                  1: FlexColumnWidth(2),
+                  2: FlexColumnWidth(2),
+                  3: FlexColumnWidth(1),
+                },
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[300]!),
+                      ),
+                    ),
+                    children: [
+                      _buildTableHeader('BSSID'),
+                      _buildTableHeader('Setor'),
+                      _buildTableHeader('Andar'),
+                      _buildTableHeader('Ações'),
+                    ],
+                  ),
+                  ...bssidMappings.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final mapping = entry.value;
+                    return TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          child: Text(
+                            mapping.macAddressRadio,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          child: Text(
+                            mapping.sector,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          child: Text(
+                            mapping.floor,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 20),
+                                onPressed: () =>
+                                    _showBssidMappingDialog(mapping: mapping, index: index),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  size: 20,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () => _deleteBssidMapping(index),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
             ],
           ),
         ),
       ],
     );
   }
-
   void _showUnitDialog({Unit? unit, int? index}) {
-    final nameController = TextEditingController(text: unit?.name);
-    final startIpController = TextEditingController(text: unit?.ipRangeStart);
-    final endIpController = TextEditingController(text: unit?.ipRangeEnd);
+  final nameController = TextEditingController(text: unit?.name);
+  final startIpController = TextEditingController(text: unit?.ipRangeStart);
+  final endIpController = TextEditingController(text: unit?.ipRangeEnd);
+
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(unit == null ? 'Adicionar Unidade' : 'Editar Unidade'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: 'Nome da Unidade',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: startIpController,
+            decoration: const InputDecoration(
+              labelText: 'IP Inicial (ex.: 192.168.0.1)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: endIpController,
+            decoration: const InputDecoration(
+              labelText: 'IP Final (ex.: 192.168.0.100)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () async {
+            final name = nameController.text.trim();
+            final startIp = startIpController.text.trim();
+            final endIp = endIpController.text.trim();
+
+            print('Valores capturados: name=$name, startIp=$startIp, endIp=$endIp');
+
+            if (name.isEmpty || startIp.isEmpty || endIp.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Todos os campos são obrigatórios'),
+                ),
+              );
+              return;
+            }
+
+            if (!_isValidIp(startIp) || !_isValidIp(endIp)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Endereços IP inválidos'),
+                ),
+              );
+              return;
+            }
+
+            try {
+              final newUnit = Unit(
+                name: name,
+                ipRangeStart: startIp,
+                ipRangeEnd: endIp,
+              );
+              print('Objeto Unit criado: ${newUnit.toJson()}');
+              if (index == null) {
+                await _deviceService.createUnit(serverIp, serverPort, token, newUnit);
+              } else {
+                await _deviceService.updateUnit(
+                    serverIp, serverPort, token, unit!.name, newUnit);
+              }
+              await _loadUnits();
+              await _loadDevices();
+              if (!mounted) return;
+              Navigator.of(context).pop();
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Erro: $e')),
+              );
+            }
+          },
+          child: const Text('Salvar'),
+        ),
+      ],
+    ),
+  );
+}
+
+  void _showBssidMappingDialog({BssidMapping? mapping, int? index}) {
+    final macController =
+        TextEditingController(text: mapping?.macAddressRadio);
+    final sectorController = TextEditingController(text: mapping?.sector);
+    final floorController = TextEditingController(text: mapping?.floor);
 
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(unit == null ? 'Adicionar Unidade' : 'Editar Unidade'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome da Unidade',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: startIpController,
-                  decoration: const InputDecoration(
-                    labelText: 'IP Inicial (ex.: 192.168.0.1)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: endIpController,
-                  decoration: const InputDecoration(
-                    labelText: 'IP Final (ex.: 192.168.0.100)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
+      builder: (context) => AlertDialog(
+        title: Text(
+            mapping == null ? 'Adicionar Mapeamento BSSID' : 'Editar Mapeamento BSSID'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: macController,
+              decoration: const InputDecoration(
+                labelText: 'BSSID (ex.: 00:14:22:01:23:45)',
+                border: OutlineInputBorder(),
+              ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancelar'),
+            const SizedBox(height: 10),
+            TextField(
+              controller: sectorController,
+              decoration: const InputDecoration(
+                labelText: 'Setor',
+                border: OutlineInputBorder(),
               ),
-              TextButton(
-                onPressed: () {
-                  final name = nameController.text.trim();
-                  final startIp = startIpController.text.trim();
-                  final endIp = endIpController.text.trim();
-
-                  if (name.isEmpty || startIp.isEmpty || endIp.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Todos os campos são obrigatórios'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  bool isValidIp(String ip) {
-                    final regex = RegExp(
-                      r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$',
-                    );
-                    return regex.hasMatch(ip);
-                  }
-
-                  final newUnit = Unit(
-                    name: name,
-                    ipRangeStart: startIp,
-                    ipRangeEnd: endIp,
-                  );
-                  setState(() {
-                    if (index == null) {
-                      units.add(newUnit);
-                    } else {
-                      units[index] = newUnit;
-                    }
-                  });
-                  UnitConfig.saveUnits(units);
-                  _loadDevices(); // Atualizar unidades dos dispositivos
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Salvar'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: floorController,
+              decoration: const InputDecoration(
+                labelText: 'Andar',
+                border: OutlineInputBorder(),
               ),
-            ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
           ),
+          TextButton(
+            onPressed: () async {
+              final mac = macController.text.trim();
+              final sector = sectorController.text.trim();
+              final floor = floorController.text.trim();
+
+              if (mac.isEmpty || sector.isEmpty || floor.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Todos os campos são obrigatórios'),
+                  ),
+                );
+                return;
+              }
+
+              final macRegex = RegExp(
+                  r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$');
+              if (!macRegex.hasMatch(mac)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('BSSID inválido'),
+                  ),
+                );
+                return;
+              }
+
+              try {
+                final newMapping = BssidMapping(
+                  macAddressRadio: mac,
+                  sector: sector,
+                  floor: floor,
+                );
+                if (index == null) {
+                  await _deviceService.createBssidMapping(
+                      serverIp, serverPort, token, newMapping);
+                } else {
+                  await _deviceService.updateBssidMapping(
+                      serverIp, serverPort, token, mapping!.macAddressRadio, newMapping);
+                }
+                await _loadBssidMappings();
+                await _loadDevices();
+                if (!mounted) return;
+                Navigator.of(context).pop();
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Erro: $e')),
+                );
+              }
+            },
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1928,33 +2569,73 @@ class _MDMDashboardState extends State<MDMDashboard> {
     return regex.hasMatch(ip);
   }
 
-  void _deleteUnit(int index) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Confirmar Exclusão'),
-            content: const Text('Deseja excluir esta unidade?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancelar'),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    units.removeAt(index);
-                  });
-                  UnitConfig.saveUnits(units);
-                  _loadDevices();
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Excluir'),
-              ),
-            ],
-          ),
-    );
-  }
+void _deleteUnit(int index) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Confirmar Exclusão'),
+      content: const Text('Deseja excluir esta unidade?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () async {
+            try {
+              await _deviceService.deleteUnit(
+                  serverIp, serverPort, token, units[index].name);
+              await _loadUnits();
+              await _loadDevices();
+              if (!mounted) return;
+              Navigator.of(context).pop();
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Erro: $e')),
+              );
+            }
+          },
+          child: const Text('Excluir'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _deleteBssidMapping(int index) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Confirmar Exclusão'),
+      content: const Text('Deseja excluir este mapeamento de BSSID?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () async {
+            try {
+              await _deviceService.deleteBssidMapping(
+                  serverIp, serverPort, token, bssidMappings[index].macAddressRadio);
+              await _loadBssidMappings();
+              await _loadDevices();
+              if (!mounted) return;
+              Navigator.of(context).pop();
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Erro: $e')),
+              );
+            }
+          },
+          child: const Text('Excluir'),
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildMenuItem(IconData icon, String title, int index) {
     final isSelected = selectedIndex == index;
@@ -2027,95 +2708,97 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Widget _buildManagedDevicesCard({
-    required bool showActions,
-    List<Device>? devices,
-  }) {
-    final displayDevices =
-        devices ?? this.devices; // Usar lista fornecida ou default
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Dispositivos Gerenciados',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: _downloadDevicesCsv,
-                icon: const Icon(Icons.download, size: 20),
-                label: const Text('Baixar CSV'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Table(
-                columnWidths: {
-                  0: const FlexColumnWidth(2),
-                  1: const FlexColumnWidth(2),
-                  2: const FlexColumnWidth(2),
-                  3: const FlexColumnWidth(2),
-                  4: const FlexColumnWidth(1.5),
-                  5: const FlexColumnWidth(2),
-                  6: const FlexColumnWidth(2),
-                  if (showActions) 7: const FlexColumnWidth(3),
-                },
-                children: [
-                  TableRow(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[300]!),
-                      ),
-                    ),
-                    children: [
-                      _buildTableHeader('Nome'),
-                      _buildTableHeader('Modelo'),
-                      _buildTableHeader('Serial'),
-                      _buildTableHeader('IMEI'),
-                      _buildTableHeader('Status'),
-                      _buildTableHeader('Última Sincronização'),
-                      _buildTableHeader('Unidade'),
-                      if (showActions) _buildTableHeader('Ações'),
-                    ],
-                  ),
-                  ...displayDevices.map(
-                    (device) =>
-                        _buildDeviceTableRow(device, showActions: showActions),
-                  ),
-                ],
+  required bool showActions,
+  List<Device>? devices,
+}) {
+  final displayDevices = devices ?? this.devices;
+  return Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.grey.withOpacity(0.1),
+          spreadRadius: 1,
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Dispositivos Gerenciados',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
               ),
             ),
+            const Spacer(),
+            ElevatedButton.icon(
+              onPressed: _downloadDevicesCsv,
+              icon: const Icon(Icons.download, size: 20),
+              label: const Text('Baixar CSV'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                elevation: 0,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Table(
+              columnWidths: {
+                0: const FlexColumnWidth(2),
+                1: const FlexColumnWidth(2),
+                2: const FlexColumnWidth(2),
+                3: const FlexColumnWidth(2),
+                4: const FlexColumnWidth(1.5),
+                5: const FlexColumnWidth(2),
+                6: const FlexColumnWidth(2),
+                7: const FlexColumnWidth(2),
+                8: const FlexColumnWidth(2),
+                if (showActions) 9: const FlexColumnWidth(3),
+              },
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey[300]!),
+                    ),
+                  ),
+                  children: [
+                    _buildTableHeader('Nome'),
+                    _buildTableHeader('Modelo'),
+                    _buildTableHeader('Serial'),
+                    _buildTableHeader('IMEI'),
+                    _buildTableHeader('Status'),
+                    _buildTableHeader('Última Sincronização'),
+                    _buildTableHeader('Unidade'),
+                    _buildTableHeader('Setor'),
+                    _buildTableHeader('Andar'),
+                    if (showActions) _buildTableHeader('Ações'),
+                  ],
+                ),
+                ...displayDevices.map(
+                  (device) => _buildDeviceTableRow(device, showActions: showActions),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildRecentAlertsCard() {
     final alerts = <Map<String, dynamic>>[];
@@ -2287,6 +2970,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
     );
   }
 
+  // ignore: unused_element
   TableRow _buildDeviceRowFromDevice(
     Device device, {
     required bool showActions,
