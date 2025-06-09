@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:excel/excel.dart' as xls;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -831,7 +832,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
 
   return TableRow(
     decoration: BoxDecoration(
-      border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+      border: const Border(bottom: BorderSide(color: Colors.grey)),
     ),
     children: [
       Padding(
@@ -956,6 +957,133 @@ class _MDMDashboardState extends State<MDMDashboard> {
     ],
   );
 }
+
+ // Função para mostrar a caixa de diálogo de escolha de formato
+  void _showExportDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Exportar Dados de Localização'),
+        content: const Text('Escolha o formato para exportação:'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _exportDataAsJson();
+            },
+            child: const Text('Exportar como JSON'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _exportDataAsExcel();
+            },
+            child: const Text('Exportar como Excel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Função para exportar os dados como JSON
+  Future<void> _exportDataAsJson() async {
+    final Map<String, dynamic> exportData = {
+      'unidades': units.map((unit) => unit.toJson()).toList(),
+      'mapeamentos_bssid': bssidMappings.map((mapping) => mapping.toJson()).toList(),
+    };
+
+    // Formata o JSON com indentação para melhor leitura
+    const jsonEncoder = JsonEncoder.withIndent('  ');
+    final jsonContent = jsonEncoder.convert(exportData);
+
+    await _saveFile(jsonContent, 'dados_localizacao', 'json');
+  }
+
+  // Função para exportar os dados como Excel
+  Future<void> _exportDataAsExcel() async {
+    final excel = xls.Excel.createExcel();
+
+    // Folha para as Unidades
+    final xls.Sheet unitSheet = excel['Unidades'];
+    unitSheet.appendRow(['Nome da Unidade', 'IP Inicial', 'IP Final']);
+    for (final unit in units) {
+      unitSheet.appendRow([unit.name, unit.ipRangeStart, unit.ipRangeEnd]);
+    }
+
+    // Folha para os Mapeamentos de BSSID
+    final xls.Sheet bssidSheet = excel['Mapeamentos BSSID'];
+    bssidSheet.appendRow(['BSSID', 'Setor', 'Andar']);
+    for (final mapping in bssidMappings) {
+      bssidSheet.appendRow([mapping.macAddressRadio, mapping.sector, mapping.floor]);
+    }
+    
+    // Remove a folha padrão criada automaticamente
+    excel.delete('Sheet1');
+
+    final fileBytes = excel.save();
+    if (fileBytes != null) {
+      await _saveFile(fileBytes, 'dados_localizacao', 'xlsx');
+    }
+  }
+
+  // Função auxiliar para salvar o arquivo (JSON ou Excel)
+  Future<void> _saveFile(dynamic content, String fileName, String extension) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final path = '${directory.path}${Platform.pathSeparator}${fileName}_$timestamp.$extension';
+      final file = File(path);
+
+      if (content is String) {
+        await file.writeAsString(content);
+      } else if (content is List<int>) {
+        await file.writeAsBytes(content);
+      }
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Arquivo Salvo'),
+          content: Text('O arquivo $fileName.$extension foi salvo em:\n$path'),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                try {
+                  final processManager = LocalProcessManager();
+                  if (Platform.isWindows) {
+                    await processManager.run(['explorer.exe', '/select,"$path"']);
+                  } else {
+                    // Adicionar suporte para outras plataformas se necessário
+                    throw Exception('Plataforma não suportada para abrir pasta.');
+                  }
+                  if (!mounted) return;
+                  Navigator.of(context).pop();
+                } catch (e) {
+                   if (!mounted) return;
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao abrir pasta: $e')));
+                }
+              },
+              child: const Text('Abrir Pasta'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao salvar o arquivo: $e')),
+      );
+    }
+  }
 
   void _deleteDevice(Device device) async {
   try {
@@ -1738,8 +1866,8 @@ Future<void> _loadUnits() async {
                 children: [
                   TableRow(
                     decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[300]!),
+                      border: const Border(
+                        bottom: BorderSide(color: Colors.grey),
                       ),
                     ),
                     children: [
@@ -2449,34 +2577,48 @@ Widget _buildReportsTab() {
               ),
               const SizedBox(height: 20),
               Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showUnitDialog(),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('Adicionar Unidade'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showBssidMappingDialog(),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('Adicionar Mapeamento BSSID'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+  children: [
+    Expanded(
+      child: ElevatedButton.icon(
+        onPressed: () => _showUnitDialog(),
+        icon: const Icon(Icons.add, size: 16),
+        label: const Text('Adicionar Unidade'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+      ),
+    ),
+    const SizedBox(width: 10),
+    Expanded(
+      child: ElevatedButton.icon(
+        onPressed: () => _showBssidMappingDialog(),
+        icon: const Icon(Icons.add, size: 16),
+        label: const Text('Adicionar Mapeamento BSSID'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+      ),
+    ),
+    const SizedBox(width: 10), // Espaçamento
+    // NOVO BOTÃO DE EXPORTAÇÃO
+    Expanded(
+      child: ElevatedButton.icon(
+        onPressed: _showExportDialog, // Chama a nova função
+        icon: const Icon(Icons.download, size: 16),
+        label: const Text('Exportar Dados'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green, // Cor diferente para destaque
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+      ),
+    ),
+  ],
+),
               const SizedBox(height: 20),
               Text(
                 'Unidades (Faixas de IP)',
@@ -2670,11 +2812,11 @@ Widget _buildReportsTab() {
       ],
     );
   }
+
   void _showUnitDialog({Unit? unit, int? index}) {
   final nameController = TextEditingController(text: unit?.name);
   final startIpController = TextEditingController(text: unit?.ipRangeStart);
   final endIpController = TextEditingController(text: unit?.ipRangeEnd);
-
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
