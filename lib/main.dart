@@ -2,13 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:process/process.dart';
 
+
 // Constantes
-const Duration kOnlineTolerance = Duration(minutes: 15);
+const Duration kOnlineTolerance = Duration(minutes: 60);
 const int kMaxRetries = 3;
 const Duration kRetryDelay = Duration(seconds: 2);
 
@@ -367,46 +369,6 @@ class DeviceService {
   List<Unit> units,
 ) async {
 
-  Future<String> deleteUnit(String ip, String port, String token, String unitName) async {
-    final url = 'http://$ip:$port/api/units/$unitName';
-    int attempts = 0;
-
-    while (attempts < kMaxRetries) {
-      attempts++;
-      try {
-        final response = await http
-            .delete(
-              Uri.parse(url),
-              headers: {
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json',
-              },
-            )
-            .timeout(const Duration(seconds: 15));
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          return data['message']?.toString() ?? 'Unidade excluída com sucesso';
-        } else {
-          final errorData = jsonDecode(response.body);
-          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
-        }
-      } on TimeoutException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Tempo limite esgotado ao excluir unidade.');
-        }
-        await Future.delayed(kRetryDelay);
-      } on SocketException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão com o servidor.');
-        }
-        await Future.delayed(kRetryDelay);
-      } catch (e) {
-        throw Exception('Erro ao excluir unidade: $e');
-      }
-    }
-    throw Exception('Falha ao excluir unidade após $kMaxRetries tentativas.');
-  }
   final url = 'http://$ip:$port/api/devices';
   int attempts = 0;
 
@@ -831,6 +793,10 @@ class _MDMDashboardState extends State<MDMDashboard> {
   Timer? _refreshTimer;
   String _deviceFilter = 'Todos';
   List<BssidMapping> bssidMappings = [];
+  String _selectedUnitFilter = 'Todas';
+  String _selectedSectorFilter = 'Todos';
+  int? _sortColumnIndex;
+  bool _isAscending = true;
 
    // Novo estado para filtro
 
@@ -1025,9 +991,9 @@ void initState() {
   _ipController = TextEditingController(text: serverIp);
   _portController = TextEditingController(text: serverPort);
   _tokenController = TextEditingController(text: token);
+  _loadUnits();
   _loadBssidMappings();
   _loadDevices();
-  _loadUnits();
   _initialize(); // Call the separate async initialization method
 }
 
@@ -1042,12 +1008,14 @@ Future<void> _initialize() async {
     }
   });
 }
-  Future<void> _loadUnits() async {
+Future<void> _loadUnits() async {
   try {
     final response = await http.get(
       Uri.parse('http://$serverIp:$serverPort/api/units'),
-      headers: {'Authorization': 'Bearer hap@2025', 'Content-Type': 'application/json'},
+      // CORREÇÃO: Use a variável 'token' para autenticação
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
     );
+    
     print('Resposta de /api/units: ${response.statusCode} - ${response.body}');
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -1055,7 +1023,7 @@ Future<void> _initialize() async {
       final loadedUnits = data.map((json) => Unit.fromJson(json)).toList();
       print('Unidades mapeadas: $loadedUnits');
       setState(() {
-        units = loadedUnits; // Atualiza a lista de unidades
+        units = loadedUnits;
       });
       print('Unidades após setState: $units');
     } else {
@@ -1313,7 +1281,7 @@ Future<void> _initialize() async {
 
   @override
   Widget build(BuildContext context) {
-    final stats = _getDeviceStats();
+    final _ = _getDeviceStats();
 
     return Scaffold(
       body: Row(
@@ -1374,7 +1342,7 @@ Future<void> _initialize() async {
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
+                        color: Colors.grey,
                         spreadRadius: 1,
                         blurRadius: 3,
                         offset: const Offset(0, 1),
@@ -1460,8 +1428,8 @@ Future<void> _initialize() async {
   }
 
   Widget _buildDashboardTab() {
-    final stats = _getDeviceStats();
     final filteredDevices = _filterDevices(); // Filtrar dispositivos
+    final stats = _getDeviceStats();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1624,7 +1592,7 @@ Future<void> _initialize() async {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey,
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
@@ -1676,7 +1644,7 @@ Future<void> _initialize() async {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey,
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
@@ -1727,7 +1695,7 @@ Future<void> _initialize() async {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey,
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
@@ -1820,54 +1788,395 @@ Future<void> _initialize() async {
     );
   }
 
-  Widget _buildReportsTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Relatórios',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
+ Widget _buildReportCard({required String title, required Widget child}) {
+  return Card(
+    elevation: 2,
+    margin: const EdgeInsets.only(bottom: 20),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+          const SizedBox(height: 20),
+          child,
+        ],
+      ),
+    ),
+  );
+}
+
+
+// Função para agrupar dispositivos por um critério (unidade ou setor)
+Map<String, Map<String, int>> _groupDevicesBy(
+    List<Device> filteredDevices, String Function(Device) keySelector) {
+  final Map<String, Map<String, int>> reportData = {};
+
+  for (final device in filteredDevices) {
+    final key = keySelector(device);
+    reportData.putIfAbsent(
+        key, () => {'Online': 0, 'Offline': 0, 'Manutenção': 0, 'Total': 0});
+
+    final statusMap = reportData[key]!;
+    statusMap['Total'] = statusMap['Total']! + 1;
+    if (device.maintenanceStatus ?? false) {
+      statusMap['Manutenção'] = statusMap['Manutenção']! + 1;
+    } else if (isDeviceOnline(parseLastSeen(device.lastSeen))) {
+      statusMap['Online'] = statusMap['Online']! + 1;
+    } else {
+      statusMap['Offline'] = statusMap['Offline']! + 1;
+    }
+  }
+  return reportData;
+}
+
+// NOVO: Widget para o cabeçalho da tabela clicável (para ordenação)
+Widget _buildSortableTableHeader(String text, int columnIndex) {
+  return GestureDetector(
+    onTap: () {
+      setState(() {
+        if (_sortColumnIndex == columnIndex) {
+          _isAscending = !_isAscending;
+        } else {
+          _sortColumnIndex = columnIndex;
+          _isAscending = true;
+        }
+      });
+    },
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      child: Row(
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[600],
+              fontSize: 12,
+            ),
+          ),
+          if (_sortColumnIndex == columnIndex)
+            Icon(
+              _isAscending ? Icons.arrow_upward : Icons.arrow_downward,
+              size: 14,
+            )
+        ],
+      ),
+    ),
+  );
+}
+
+
+// --- WIDGETS DE RELATÓRIO ESPECÍFICOS ---
+
+// NOVO: Widget para o relatório de Conformidade
+Widget _buildComplianceReportCard(List<Device> filteredDevices) {
+  if (filteredDevices.isEmpty) return const SizedBox.shrink();
+  
+  final complianceCounts = filteredDevices
+      .fold<Map<String, int>>({}, (map, device) {
+        final status = device.complianceStatus ?? 'Desconhecido';
+        map[status] = (map[status] ?? 0) + 1;
+        return map;
+      });
+
+  return _buildReportCard(
+    title: 'Relatório de Conformidade',
+    child: SizedBox(
+      height: 150,
+      child: BarChart(
+        BarChartData(
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipItem: (group, groupIndex, rod, rodIndex) =>
+                  BarTooltipItem(
+                rod.toY.round().toString(),
+                const TextStyle(color: Colors.white),
               ),
-            ],
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          titlesData: FlTitlesData(
+            show: true,
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (value, meta) => Text(
+                  complianceCounts.keys.elementAt(value.toInt()),
+                  style: const TextStyle(fontSize: 10),
+                ),
+                reservedSize: 20,
+              ),
+            ),
+            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          barGroups: complianceCounts.entries.map((entry) {
+            final index = complianceCounts.keys.toList().indexOf(entry.key);
+            return BarChartGroupData(x: index, barRods: [
+              BarChartRodData(
+                toY: entry.value.toDouble(),
+                color: entry.key.toLowerCase() == 'compliant' ? Colors.cyan : Colors.orange,
+                width: 30,
+              ),
+            ]);
+          }).toList(),
+        ),
+      ),
+    ),
+  );
+}
+
+// NOVO: Widget para o relatório por Modelo
+// Widget para o relatório por Modelo (Alternativa com gráfico vertical)
+Widget _buildDeviceModelReportCard(List<Device> filteredDevices) {
+  if (filteredDevices.isEmpty) return const SizedBox.shrink();
+  
+  final modelCounts = filteredDevices.fold<Map<String, int>>({}, (map, device) {
+    final model = device.deviceModel ?? 'Desconhecido';
+    map[model] = (map[model] ?? 0) + 1;
+    return map;
+  });
+
+  return _buildReportCard(
+    title: 'Dispositivos por Modelo',
+    child: SizedBox(
+      height: 250, // Altura fixa para gráfico vertical
+      child: BarChart(
+        BarChartData(
+          // A LINHA "layout" FOI REMOVIDA DAQUI
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipItem: (group, groupIndex, rod, rodIndex) =>
+                  BarTooltipItem(
+                rod.toY.round().toString(),
+                const TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+          titlesData: FlTitlesData(
+            show: true,
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
+            // Títulos dos modelos agora na parte inferior
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (value, meta) {
+                  final index = value.toInt();
+                  if (index < 0 || index >= modelCounts.keys.length) {
+                    return const SizedBox.shrink();
+                  }
+                  return SideTitleWidget(
+                    space: 4,
+                    meta: meta,
+                    child: Text(
+                      modelCounts.keys.elementAt(index),
+                      style: const TextStyle(fontSize: 9), // Fonte menor para caber
+                    ),
+                  );
+                },
+                reservedSize: 40, // Espaço para nomes dos modelos na base
+              ),
+            ),
+          ),
+          barGroups: modelCounts.entries.map((entry) {
+            final index = modelCounts.keys.toList().indexOf(entry.key);
+            return BarChartGroupData(x: index, barRods: [
+              BarChartRodData(
+                  toY: entry.value.toDouble(), 
+                  color: Colors.purple, 
+                  width: 15 // Barras mais finas
+              ),
+            ]);
+          }).toList(),
+        ),
+      ),
+    ),
+  );
+}
+
+// Widget genérico e ORDENÁVEL para relatórios agrupados (Unidade, Setor)
+Widget _buildGroupedReportCard({
+  required String title,
+  required Map<String, Map<String, int>> data,
+}) {
+  if (data.isEmpty) return const SizedBox.shrink();
+
+  // Lógica de Ordenação
+  var sortedEntries = data.entries.toList();
+  if (_sortColumnIndex != null) {
+    sortedEntries.sort((a, b) {
+      Comparable? valueA;
+      Comparable? valueB;
+      switch (_sortColumnIndex) {
+        case 0: // Nome
+          valueA = a.key;
+          valueB = b.key;
+          break;
+        case 1: // Total
+          valueA = a.value['Total'];
+          valueB = b.value['Total'];
+          break;
+        case 2: // Online
+          valueA = a.value['Online'];
+          valueB = b.value['Online'];
+          break;
+      }
+      return _isAscending
+          ? Comparable.compare(valueA!, valueB!)
+          : Comparable.compare(valueB!, valueA!);
+    });
+  }
+
+  return _buildReportCard(
+    title: title,
+    child: Table(
+      border: TableBorder.all(color: Colors.grey[300]!),
+      columnWidths: const {
+        0: FlexColumnWidth(2),
+        1: FlexColumnWidth(1),
+        2: FlexColumnWidth(1),
+        3: FlexColumnWidth(1),
+        4: FlexColumnWidth(1),
+      },
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: Colors.grey[100]),
+          children: [
+            _buildSortableTableHeader('Nome', 0),
+            _buildSortableTableHeader('Total', 1),
+            _buildSortableTableHeader('Online', 2),
+            _buildTableHeader('Offline'),
+            _buildTableHeader('Manutenção'),
+          ],
+        ),
+        ...sortedEntries.map((entry) => TableRow(
+              children: [
+                Padding(padding: const EdgeInsets.all(8.0), child: Text(entry.key)),
+                Padding(padding: const EdgeInsets.all(8.0), child: Text('${entry.value['Total']}')),
+                Padding(padding: const EdgeInsets.all(8.0), child: Text('${entry.value['Online']}')),
+                Padding(padding: const EdgeInsets.all(8.0), child: Text('${entry.value['Offline']}')),
+                Padding(padding: const EdgeInsets.all(8.0), child: Text('${entry.value['Manutenção']}')),
+              ],
+            )),
+      ],
+    ),
+  );
+}
+
+// --- WIDGET PRINCIPAL DA ABA (ATUALIZADO) ---
+Widget _buildReportsTab() {
+  // Gera listas únicas para os filtros
+  final uniqueUnits = ['Todas', ...devices.map((d) => d.unit).whereType<String>().toSet()];
+  final uniqueSectors = ['Todos', ...devices.map((d) => d.sector).whereType<String>().toSet()];
+
+  // Lógica de Filtro
+  final filteredDevices = devices.where((device) {
+    final unitMatch = _selectedUnitFilter == 'Todas' || device.unit == _selectedUnitFilter;
+    final sectorMatch = _selectedSectorFilter == 'Todos' || device.sector == _selectedSectorFilter;
+    return unitMatch && sectorMatch;
+  }).toList();
+  
+  // Calcula dados baseados nos dispositivos filtrados
+  final unitReportData = _groupDevicesBy(filteredDevices, (d) => d.unit ?? 'Não especificada');
+  final sectorReportData = _groupDevicesBy(filteredDevices, (d) => d.sector ?? 'Não especificado');
+
+  return ListView(
+    padding: const EdgeInsets.all(8),
+    children: [
+      Text(
+        'Relatórios e Análises',
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.grey[800]),
+      ),
+      const SizedBox(height: 20),
+
+      // --- ÁREA DE FILTROS ---
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
             children: [
-              Text(
-                'Relatórios do Sistema',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
+              const Icon(Icons.filter_alt, color: Colors.blue),
+              const SizedBox(width: 10),
+              const Text("Filtros:", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(width: 20),
+              // Filtro de Unidade
+              Expanded(
+                child: DropdownButton<String>(
+                  value: _selectedUnitFilter,
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedUnitFilter = newValue!;
+                    });
+                  },
+                  items: uniqueUnits.map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(value: value, child: Text(value));
+                  }).toList(),
                 ),
               ),
-              const SizedBox(height: 20),
-              const Text('Relatório de Conformidade: Disponível'),
-              const Text('Incidentes de Segurança: 0'),
-              Text('Último Gerado: ${formatDateTime(DateTime.now())}'),
+              const SizedBox(width: 20),
+              // Filtro de Setor
+              Expanded(
+                child: DropdownButton<String>(
+                  value: _selectedSectorFilter,
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedSectorFilter = newValue!;
+                    });
+                  },
+                  items: uniqueSectors.map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(value: value, child: Text(value));
+                  }).toList(),
+                ),
+              ),
             ],
           ),
         ),
-      ],
-    );
-  }
+      ),
+      const SizedBox(height: 20),
+      
+      if (isLoading)
+        const Center(child: CircularProgressIndicator())
+      else if (filteredDevices.isEmpty)
+         const Center(child: Text("Nenhum dado encontrado para os filtros selecionados."))
+      else ...[
+        // Visão Geral com Gráfico de Pizza
+        _buildReportCard(
+          title: 'Visão Geral do Status',
+          child: SizedBox( /* ... (código do gráfico de pizza não precisa mudar) ... */ ),
+        ),
+        
+        // NOVO: Relatório de Conformidade
+        _buildComplianceReportCard(filteredDevices),
+
+        // NOVO: Relatório por Modelo
+        _buildDeviceModelReportCard(filteredDevices),
+
+        // Relatório por Unidade (agora ordenável)
+        _buildGroupedReportCard(
+          title: 'Dispositivos por Unidade',
+          data: unitReportData,
+        ),
+
+        // Relatório por Setor (agora ordenável)
+        _buildGroupedReportCard(
+          title: 'Dispositivos por Setor',
+          data: sectorReportData,
+        ),
+      ]
+    ],
+  );
+}
 
   Widget _buildAlertsTab() {
     final alerts = <Map<String, dynamic>>[];
@@ -1917,7 +2226,7 @@ Future<void> _initialize() async {
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
+                  color: Colors.grey,
                   spreadRadius: 1,
                   blurRadius: 6,
                   offset: const Offset(0, 2),
@@ -1988,7 +2297,7 @@ Future<void> _initialize() async {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey,
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
@@ -2100,7 +2409,6 @@ Future<void> _initialize() async {
     );
   }
 
-  @override
   Widget _buildUnitsTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2121,7 +2429,7 @@ Future<void> _initialize() async {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey,
                 spreadRadius: 1,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
@@ -2673,7 +2981,7 @@ void _deleteBssidMapping(int index) {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey,
             spreadRadius: 1,
             blurRadius: 6,
             offset: const Offset(0, 2),
@@ -2719,7 +3027,7 @@ void _deleteBssidMapping(int index) {
       borderRadius: BorderRadius.circular(12),
       boxShadow: [
         BoxShadow(
-          color: Colors.grey.withOpacity(0.1),
+          color: Colors.grey,
           spreadRadius: 1,
           blurRadius: 6,
           offset: const Offset(0, 2),
@@ -2837,7 +3145,7 @@ void _deleteBssidMapping(int index) {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey,
             spreadRadius: 1,
             blurRadius: 6,
             offset: const Offset(0, 2),
@@ -2902,7 +3210,7 @@ void _deleteBssidMapping(int index) {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey,
             spreadRadius: 1,
             blurRadius: 6,
             offset: const Offset(0, 2),
