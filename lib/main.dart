@@ -239,467 +239,219 @@ class Device {
 }
 
 class DeviceService {
-  Future<String> deleteUnit(String ip, String port, String token, String unitName) async {
-  final url = 'http://$ip:$port/api/units/$unitName';
-  int attempts = 0;
-
-  while (attempts < kMaxRetries) {
-    attempts++;
-    try {
-      final response = await http
-          .delete(
-            Uri.parse(url),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-          )
-          .timeout(const Duration(seconds: 15));
-
-      print('Resposta bruta de /api/units/$unitName: ${response.body}'); // Log para depuração
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['message']?.toString() ?? 'Unidade excluída com sucesso';
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
-      }
-    } on TimeoutException {
-      if (attempts == kMaxRetries) {
-        throw Exception('Tempo limite esgotado ao excluir unidade.');
-      }
-      await Future.delayed(kRetryDelay);
-    } on SocketException {
-      if (attempts == kMaxRetries) {
-        throw Exception('Falha na conexão com o servidor.');
-      }
-      await Future.delayed(kRetryDelay);
-    } catch (e) {
-      throw Exception('Erro ao excluir unidade: $e');
-    }
-  }
-  throw Exception('Falha ao excluir unidade após $kMaxRetries tentativas.');
-}
-  Future<String> createUnit(String ip, String port, String token, Unit unit) async {
-    final url = 'http://$ip:$port/api/units';
+  Future<http.Response> _performHttpRequest({
+    required Future<http.Response> Function() request,
+    required String errorMessage, required String body,
+  }) async {
     int attempts = 0;
-
     while (attempts < kMaxRetries) {
       attempts++;
       try {
-        final response = await http
-            .post(
-              Uri.parse(url),
-              headers: {
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json',
-              },
-              body: jsonEncode(unit.toJson()),
-            )
-            .timeout(const Duration(seconds: 15));
-
-        if (response.statusCode == 201) {
-          return 'Unidade criada com sucesso';
+        final response = await request().timeout(const Duration(seconds: 15));
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          return response;
         } else {
           final errorData = jsonDecode(response.body);
-          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
+          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
         }
       } on TimeoutException {
         if (attempts == kMaxRetries) {
-          throw Exception('Tempo limite esgotado ao criar unidade.');
+          throw Exception('$errorMessage: Tempo limite esgotado após $kMaxRetries tentativas.');
         }
         await Future.delayed(kRetryDelay);
       } on SocketException {
         if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão com o servidor.');
+          throw Exception('$errorMessage: Falha na conexão com o servidor.');
         }
         await Future.delayed(kRetryDelay);
       } catch (e) {
-        throw Exception('Erro ao criar unidade: $e');
+        throw Exception('$errorMessage: $e');
       }
     }
-    throw Exception('Falha ao criar unidade após $kMaxRetries tentativas.');
+    throw Exception('$errorMessage após $kMaxRetries tentativas.');
+  }
+
+  Future<String> createUnit(String ip, String port, String token, Unit unit) async {
+    final response = await _performHttpRequest(
+      request: () => http.post(
+        Uri.parse('http://$ip:$port/api/units'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(unit.toJson()),
+      ),
+      errorMessage: 'Erro ao criar unidade', body: '',
+    );
+    return 'Unidade criada com sucesso';
   }
 
   Future<String> updateUnit(String ip, String port, String token, String unitName, Unit unit) async {
-    final url = 'http://$ip:$port/api/units/$unitName';
-    int attempts = 0;
-
-    while (attempts < kMaxRetries) {
-      attempts++;
-      try {
-        final response = await http
-            .put(
-              Uri.parse(url),
-              headers: {
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json',
-              },
-              body: jsonEncode(unit.toJson()),
-            )
-            .timeout(const Duration(seconds: 15));
-
-        if (response.statusCode == 200) {
-          return 'Unidade atualizada com sucesso';
-        } else {
-          final errorData = jsonDecode(response.body);
-          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
-        }
-      } on TimeoutException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Tempo limite esgotado ao atualizar unidade.');
-        }
-        await Future.delayed(kRetryDelay);
-      } on SocketException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão com o servidor.');
-        }
-        await Future.delayed(kRetryDelay);
-      } catch (e) {
-        throw Exception('Erro ao atualizar unidade: $e');
-      }
-    }
-    throw Exception('Falha ao atualizar unidade após $kMaxRetries tentativas.');
+    final response = await _performHttpRequest(
+      request: () => http.put(
+        Uri.parse('http://$ip:$port/api/units/$unitName'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(unit.toJson()),
+      ),
+      errorMessage: 'Erro ao atualizar unidade', body: '',
+    );
+    return 'Unidade atualizada com sucesso';
   }
 
-  Future<List<Device>> fetchDevices(
-  String ip,
-  String port,
-  String token,
-  List<Unit> units,
-) async {
-
-  final url = 'http://$ip:$port/api/devices';
-  int attempts = 0;
-
-  while (attempts < kMaxRetries) {
-    attempts++;
-    try {
-      final response = await http
-          .get(Uri.parse(url), headers: {'Authorization': 'Bearer $token'})
-          .timeout(const Duration(seconds: 15));
-
-      print('Tentativa $attempts - Resposta bruta de /api/devices: ${response.statusCode} ${response.body}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is List) {
-          return data
-              .map((json) {
-                try {
-                  return Device.fromJson(json as Map<String, dynamic>, units);
-                } catch (e) {
-                  print('Erro ao parsear dispositivo: $json, erro: $e');
-                  return null;
-                }
-              })
-              .where((device) => device != null)
-              .cast<Device>()
-              .toList();
-        }
-        throw Exception(
-          'Resposta inválida: Esperado uma lista de dispositivos, recebido: ${data.runtimeType}',
-        );
-      } else if (response.statusCode == 401) {
-        throw Exception('Erro 401: Token de autenticação inválido ou ausente.');
-      } else if (response.statusCode == 403) {
-        throw Exception('Erro 403: Acesso negado. Verifique o token.');
-      } else {
-        throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase ?? "Erro desconhecido na API"}');
-      }
-    } on TimeoutException {
-      if (attempts == kMaxRetries) {
-        throw Exception('Falha na conexão: Tempo limite esgotado após $kMaxRetries tentativas.');
-      }
-      await Future.delayed(kRetryDelay);
-    } on SocketException catch (e) {
-      if (attempts == kMaxRetries) {
-        throw Exception('Falha na conexão: Verifique o IP/Porta e a rede. ($e)');
-      }
-      await Future.delayed(kRetryDelay);
-    } on FormatException catch (e) {
-      throw Exception('Erro ao processar resposta: Formato inválido. ($e)');
-    } catch (e) {
-      throw Exception('Falha inesperada: $e');
-    }
+  Future<String> deleteUnit(String ip, String port, String token, String unitName) async {
+    final response = await _performHttpRequest(
+      request: () => http.delete(
+        Uri.parse('http://$ip:$port/api/units/$unitName'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ),
+      errorMessage: 'Erro ao excluir unidade', body: '',
+    );
+    final data = jsonDecode(response.body);
+    return data['message']?.toString() ?? 'Unidade excluída com sucesso';
   }
-  return [];
-}
+
+  Future<String> createBssidMapping(String ip, String port, String token, BssidMapping mapping) async {
+    final response = await _performHttpRequest(
+      request: () => http.post(
+        Uri.parse('http://$ip:$port/api/bssid-mappings'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(mapping.toJson()),
+      ),
+      errorMessage: 'Erro ao criar mapeamento', body: '',
+    );
+    return 'Mapeamento de BSSID criado com sucesso';
+  }
+
+  Future<String> updateBssidMapping(String ip, String port, String token, String macAddressRadio, BssidMapping mapping) async {
+    final _ = await _performHttpRequest(
+      request: () => http.put(
+        Uri.parse('http://$ip:$port/api/bssid-mappings/$macAddressRadio'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(mapping.toJson()),
+      ),
+      errorMessage: 'Erro ao atualizar mapeamento',
+      body: '',
+    );
+    return 'Mapeamento de BSSID atualizado com sucesso';
+  }
+
+  Future<String> deleteBssidMapping(String ip, String port, String token, String macAddressRadio) async {
+    final response = await _performHttpRequest(
+      request: () => http.delete(
+        Uri.parse('http://$ip:$port/api/bssid-mappings/$macAddressRadio'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ),
+      errorMessage: 'Erro ao excluir mapeamento', body: '',
+    );
+    return 'Mapeamento de BSSID excluído com sucesso';
+  }
+
+  Future<List<Device>> fetchDevices(String ip, String port, String token, List<Unit> units) async {
+    final response = await _performHttpRequest(
+      request: () => http.get(
+        Uri.parse('http://$ip:$port/api/devices'),
+        headers: {'Authorization': 'Bearer $token'},
+      ),
+      errorMessage: 'Erro ao buscar dispositivos', body: '',
+    );
+
+    final data = jsonDecode(response.body);
+    if (data is List) {
+      return data
+          .map((json) {
+            try {
+              return Device.fromJson(json as Map<String, dynamic>, units);
+            } catch (e) {
+              print('Erro ao parsear dispositivo: $json, erro: $e');
+              return null;
+            }
+          })
+          .where((device) => device != null)
+          .cast<Device>()
+          .toList();
+    }
+    throw Exception('Resposta inválida: Esperado uma lista de dispositivos, recebido: ${data.runtimeType}');
+  }
+
+  Future<List<BssidMapping>> fetchBssidMappings(String ip, String port, String token) async {
+    final response = await _performHttpRequest(
+      request: () => http.get(
+        Uri.parse('http://$ip:$port/api/bssid-mappings'),
+        headers: {'Authorization': 'Bearer $token'},
+      ),
+      errorMessage: 'Erro ao buscar mapeamentos de BSSID', body: '',
+    );
+
+    final data = jsonDecode(response.body);
+    if (data is List) {
+      return data
+          .map((json) => BssidMapping.fromJson(json as Map<String, dynamic>))
+          .toList();
+    }
+    throw Exception('Resposta inválida: Esperado uma lista de mapeamentos');
+  }
 
   Future<String> sendCommand(
-  String ip,
-  String port,
-  String token,
-  String serialNumber,
-  String command,
-  Map<String, dynamic> parameters,
+    String ip,
+    String port,
+    String token,
+    String serialNumber,
+    String command,
+    Map<String, dynamic> parameters,
+  ) async {
+    final response = await _performHttpRequest(
+      request: () => http.post(
+        Uri.parse('http://$ip:$port/api/executeCommand'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'serial_number': serialNumber,
+          'command': command,
+          'device_name': parameters['device_name'] ?? serialNumber,
+          ...parameters,
+        }),
+      ),
+      errorMessage: 'Erro ao enviar comando', body: '',
+    );
 
-  
-) async {
-  final url = 'http://$ip:$port/api/executeCommand'; // Corrigido para a rota correta
-  int attempts = 0;
-
-  while (attempts < kMaxRetries) {
-    attempts++;
-    try {
-      final body = {
-        'serial_number': serialNumber,
-        'command': command, // Alterado de command_type para command
-        'device_name': parameters['device_name'] ?? serialNumber, // Adicionado device_name
-        ...parameters, // Espalhar parâmetros diretamente no corpo
-      };
-
-      print('Enviando para $url: ${jsonEncode(body)}'); // Log para depuração
-
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      print('Resposta de /api/executeCommand: ${response.statusCode} ${response.body}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['message']?.toString() ?? 'Comando executado com sucesso';
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(
-          errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}',
-        );
-      }
-    } on TimeoutException {
-      if (attempts == kMaxRetries) {
-        throw Exception('Tempo limite esgotado ao enviar comando.');
-      }
-      await Future.delayed(kRetryDelay);
-    } on SocketException {
-      if (attempts == kMaxRetries) {
-        throw Exception('Falha na conexão com o servidor.');
-      }
-      await Future.delayed(kRetryDelay);
-    } catch (e) {
-      throw Exception('Erro ao enviar comando: $e');
-    }
+    final data = jsonDecode(response.body);
+    return data['message']?.toString() ?? 'Comando executado com sucesso';
   }
-  throw Exception('Falha ao enviar comando após $kMaxRetries tentativas.');
-}
 
   Future<String> deleteDevice(String ip, String port, String token, String serialNumber) async {
-  final url = 'http://$ip:$port/api/devices/$serialNumber'; // Rota DELETE
-  int attempts = 0;
+    final response = await _performHttpRequest(
+      request: () => http.delete(
+        Uri.parse('http://$ip:$port/api/devices/$serialNumber'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ),
+      errorMessage: 'Erro ao excluir dispositivo', body: '',
+    );
 
-  while (attempts < kMaxRetries) {
-    attempts++;
-    try {
-      final response = await http
-          .delete(
-            Uri.parse(url),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-          )
-          .timeout(const Duration(seconds: 15));
-
-      print('Resposta de DELETE /api/devices/$serialNumber: ${response.statusCode} ${response.body}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['message']?.toString() ?? 'Dispositivo excluído com sucesso';
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
-      }
-    } on TimeoutException {
-      if (attempts == kMaxRetries) {
-        throw Exception('Tempo limite esgotado ao excluir dispositivo.');
-      }
-      await Future.delayed(kRetryDelay);
-    } on SocketException {
-      if (attempts == kMaxRetries) {
-        throw Exception('Falha na conexão com o servidor.');
-      }
-      await Future.delayed(kRetryDelay);
-    } catch (e) {
-      throw Exception('Erro ao excluir dispositivo: $e');
-    }
-  }
-  throw Exception('Falha ao excluir dispositivo após $kMaxRetries tentativas.');
-}
-
-
-Future<List<BssidMapping>> fetchBssidMappings(
-      String ip, String port, String token) async {
-    final url = 'http://$ip:$port/api/bssid-mappings';
-    int attempts = 0;
-
-    while (attempts < kMaxRetries) {
-      attempts++;
-      try {
-        final response = await http
-            .get(Uri.parse(url), headers: {'Authorization': 'Bearer $token'})
-            .timeout(const Duration(seconds: 15));
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data is List) {
-            return data
-                .map((json) => BssidMapping.fromJson(json as Map<String, dynamic>))
-                .toList();
-          }
-          throw Exception('Resposta inválida: Esperado uma lista de mapeamentos');
-        } else {
-          throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase}');
-        }
-      } on TimeoutException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Tempo limite esgotado após $kMaxRetries tentativas.');
-        }
-        await Future.delayed(kRetryDelay);
-      } on SocketException catch (e) {
-        if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão: $e');
-        }
-        await Future.delayed(kRetryDelay);
-      } catch (e) {
-        throw Exception('Falha inesperada: $e');
-      }
-    }
-    return [];
-  }
-
-  Future<String> createBssidMapping(
-      String ip, String port, String token, BssidMapping mapping) async {
-    final url = 'http://$ip:$port/api/bssid-mappings';
-    int attempts = 0;
-
-    while (attempts < kMaxRetries) {
-      attempts++;
-      try {
-        final response = await http
-            .post(
-              Uri.parse(url),
-              headers: {
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json',
-              },
-              body: jsonEncode(mapping.toJson()),
-            )
-            .timeout(const Duration(seconds: 15));
-
-        if (response.statusCode == 201) {
-          return 'Mapeamento de BSSID criado com sucesso';
-        } else {
-          final errorData = jsonDecode(response.body);
-          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
-        }
-      } on TimeoutException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Tempo limite esgotado ao criar mapeamento.');
-        }
-        await Future.delayed(kRetryDelay);
-      } on SocketException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão com o servidor.');
-        }
-        await Future.delayed(kRetryDelay);
-      } catch (e) {
-        throw Exception('Erro ao criar mapeamento: $e');
-      }
-    }
-    throw Exception('Falha ao criar mapeamento após $kMaxRetries tentativas.');
-  }
-
-  Future<String> updateBssidMapping(String ip, String port, String token,
-      String macAddressRadio, BssidMapping mapping) async {
-    final url = 'http://$ip:$port/api/bssid-mappings/$macAddressRadio';
-    int attempts = 0;
-
-    while (attempts < kMaxRetries) {
-      attempts++;
-      try {
-        final response = await http
-            .put(
-              Uri.parse(url),
-              headers: {
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json',
-              },
-              body: jsonEncode(mapping.toJson()),
-            )
-            .timeout(const Duration(seconds: 15));
-
-        if (response.statusCode == 200) {
-          return 'Mapeamento de BSSID atualizado com sucesso';
-        } else {
-          final errorData = jsonDecode(response.body);
-          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
-        }
-      } on TimeoutException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Tempo limite esgotado ao atualizar mapeamento.');
-        }
-        await Future.delayed(kRetryDelay);
-      } on SocketException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão com o servidor.');
-        }
-        await Future.delayed(kRetryDelay);
-      } catch (e) {
-        throw Exception('Erro ao atualizar mapeamento: $e');
-      }
-    }
-    throw Exception('Falha ao atualizar mapeamento após $kMaxRetries tentativas.');
-  }
-
-  Future<String> deleteBssidMapping(
-      String ip, String port, String token, String macAddressRadio) async {
-    final url = 'http://$ip:$port/api/bssid-mappings/$macAddressRadio';
-    int attempts = 0;
-
-    while (attempts < kMaxRetries) {
-      attempts++;
-      try {
-        final response = await http
-            .delete(
-              Uri.parse(url),
-              headers: {
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json',
-              },
-            )
-            .timeout(const Duration(seconds: 15));
-
-        if (response.statusCode == 200) {
-          return 'Mapeamento de BSSID excluído com sucesso';
-        } else {
-          final errorData = jsonDecode(response.body);
-          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}');
-        }
-      } on TimeoutException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Tempo limite esgotado ao excluir mapeamento.');
-        }
-        await Future.delayed(kRetryDelay);
-      } on SocketException {
-        if (attempts == kMaxRetries) {
-          throw Exception('Falha na conexão com o servidor.');
-        }
-        await Future.delayed(kRetryDelay);
-      } catch (e) {
-        throw Exception('Erro ao excluir mapeamento: $e');
-      }
-    }
-    throw Exception('Falha ao excluir mapeamento após $kMaxRetries tentativas.');
+    final data = jsonDecode(response.body);
+    return data['message']?.toString() ?? 'Dispositivo excluído com sucesso';
   }
 }
+
 
 class BssidMapping {
   final String macAddressRadio;
@@ -812,6 +564,35 @@ class _MDMDashboardState extends State<MDMDashboard> {
   late TextEditingController _tokenController;
 
   // Método para construir os itens do menu
+  List<Map<String, dynamic>> _generateAlerts({bool limit = false}) {
+  final alerts = <Map<String, dynamic>>[];
+  for (final device in devices) {
+    final lastSeenTime = parseLastSeen(device.lastSeen);
+    final online = isDeviceOnline(lastSeenTime);
+    final inMaintenance = device.maintenanceStatus ?? false;
+
+    if (!online && !inMaintenance) {
+      alerts.add({
+        'icon': Icons.warning,
+        'title': 'Dispositivo Offline',
+        'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
+        'time': formatDateTime(lastSeenTime),
+        'color': Colors.orange,
+      });
+    }
+
+    if ((device.battery ?? 100) < 20 && !inMaintenance) {
+      alerts.add({
+        'icon': Icons.battery_alert,
+        'title': 'Bateria Baixa',
+        'subtitle': '${device.deviceName} - ${device.battery}%',
+        'time': formatDateTime(lastSeenTime),
+        'color': Colors.red,
+      });
+    }
+  }
+  return limit ? alerts.take(3).toList() : alerts;
+}
 
   TableRow _buildDeviceTableRow(Device device, {required bool showActions}) {
   final lastSeenTime = parseLastSeen(device.lastSeen);
@@ -1030,60 +811,63 @@ class _MDMDashboardState extends State<MDMDashboard> {
     }
   }
 
-  // Função auxiliar para salvar o arquivo (JSON ou Excel)
-  Future<void> _saveFile(dynamic content, String fileName, String extension) async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final path = '${directory.path}${Platform.pathSeparator}${fileName}_$timestamp.$extension';
-      final file = File(path);
 
-      if (content is String) {
-        await file.writeAsString(content);
-      } else if (content is List<int>) {
-        await file.writeAsBytes(content);
-      }
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Arquivo Salvo'),
-          content: Text('O arquivo $fileName.$extension foi salvo em:\n$path'),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                try {
-                  final processManager = LocalProcessManager();
-                  if (Platform.isWindows) {
-                    await processManager.run(['explorer.exe', '/select,"$path"']);
-                  } else {
-                    // Adicionar suporte para outras plataformas se necessário
-                    throw Exception('Plataforma não suportada para abrir pasta.');
-                  }
-                  if (!mounted) return;
-                  Navigator.of(context).pop();
-                } catch (e) {
-                   if (!mounted) return;
-                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao abrir pasta: $e')));
-                }
-              },
-              child: const Text('Abrir Pasta'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
+Future<void> _showSaveFileDialog(String fileName, String extension, String path) async {
+  if (!mounted) return;
+  await showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Arquivo Salvo'),
+      content: Text('O arquivo $fileName.$extension foi salvo em:\n$path'),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            try {
+              final processManager = LocalProcessManager();
+              if (Platform.isWindows) {
+                await processManager.run(['explorer.exe', '/select,"$path"']);
+              } else {
+                throw Exception('Plataforma não suportada para abrir pasta.');
+              }
+              if (!mounted) return;
+              Navigator.of(context).pop();
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao abrir pasta: $e')));
+            }
+          },
+          child: const Text('Abrir Pasta'),
         ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao salvar o arquivo: $e')),
-      );
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
+  // Função auxiliar para salvar o arquivo (JSON ou Excel)
+Future<void> _saveFile(dynamic content, String fileName, String extension) async {
+  try {
+    final directory = await getApplicationDocumentsDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final path = '${directory.path}${Platform.pathSeparator}${fileName}_$timestamp.$extension';
+    final file = File(path);
+
+    if (content is String) {
+      await file.writeAsString(content);
+    } else if (content is List<int>) {
+      await file.writeAsBytes(content);
     }
+
+    await _showSaveFileDialog(fileName, extension, path);
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erro ao salvar o arquivo: $e')),
+    );
   }
+}
 
   void _deleteDevice(Device device) async {
   try {
@@ -1665,16 +1449,7 @@ Future<void> _loadUnits() async {
                 ),
               ),
               const SizedBox(width: 20),
-              SizedBox(
-                width: 300,
-                child: Column(
-                  children: [
-                    _buildRecentAlertsCard(),
-                    const SizedBox(height: 20),
-                    _buildServerStatusCard(),
-                  ],
-                ),
-              ),
+
             ],
           ),
         ),
@@ -2306,104 +2081,77 @@ Widget _buildReportsTab() {
   );
 }
 
-  Widget _buildAlertsTab() {
-    final alerts = <Map<String, dynamic>>[];
-    for (final device in devices) {
-      final lastSeenTime = parseLastSeen(device.lastSeen);
-      final online = isDeviceOnline(lastSeenTime);
-      final inMaintenance = device.maintenanceStatus ?? false;
+Widget _buildAlertsTab() {
+  final alerts = _generateAlerts();
 
-      if (!online && !inMaintenance) {
-        alerts.add({
-          'icon': Icons.warning,
-          'title': 'Dispositivo Offline',
-          'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
-          'time': formatDateTime(lastSeenTime),
-          'color': Colors.orange,
-        });
-      }
-
-      if ((device.battery ?? 100) < 20 && !inMaintenance) {
-        alerts.add({
-          'icon': Icons.battery_alert,
-          'title': 'Bateria Baixa',
-          'subtitle': '${device.deviceName} - ${device.battery}%',
-          'time': formatDateTime(lastSeenTime),
-          'color': Colors.red,
-        });
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Alertas',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Alertas',
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey[800],
+        ),
+      ),
+      const SizedBox(height: 20),
+      Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey,
+                spreadRadius: 1,
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Todos os Alertas',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: alerts.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Nenhum alerta disponível',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      )
+                    : ListView(
+                        children: alerts
+                            .map(
+                              (alert) => _buildAlertItem(
+                                alert['icon'] as IconData,
+                                alert['title'] as String,
+                                alert['subtitle'] as String,
+                                alert['time'] as String,
+                                alert['color'] as Color,
+                              ),
+                            )
+                            .toList(),
+                      ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 20),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey,
-                  spreadRadius: 1,
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Todos os Alertas',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Expanded(
-                  child:
-                      alerts.isEmpty
-                          ? Center(
-                            child: Text(
-                              'Nenhum alerta disponível',
-                              style: TextStyle(color: Colors.grey[600]),
-                            ),
-                          )
-                          : ListView(
-                            children:
-                                alerts
-                                    .map(
-                                      (alert) => _buildAlertItem(
-                                        alert['icon'] as IconData,
-                                        alert['title'] as String,
-                                        alert['subtitle'] as String,
-                                        alert['time'] as String,
-                                        alert['color'] as Color,
-                                      ),
-                                    )
-                                    .toList(),
-                          ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   Widget _buildSettingsTab() {
     return Column(
@@ -3012,13 +2760,6 @@ Widget _buildReportsTab() {
     );
   }
 
-  bool _isValidIp(String ip) {
-    final regex = RegExp(
-      r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$',
-    );
-    return regex.hasMatch(ip);
-  }
-
 void _deleteUnit(int index) {
   showDialog(
     context: context,
@@ -3249,100 +2990,71 @@ void _deleteBssidMapping(int index) {
     ),
   );
 }
+Widget _buildRecentAlertsCard() {
+  final limitedAlerts = _generateAlerts(limit: true);
 
-  Widget _buildRecentAlertsCard() {
-    final alerts = <Map<String, dynamic>>[];
-    for (final device in devices) {
-      final lastSeenTime = parseLastSeen(device.lastSeen);
-      final online = isDeviceOnline(lastSeenTime);
-      final inMaintenance = device.maintenanceStatus ?? false;
-
-      if (!online && !inMaintenance) {
-        alerts.add({
-          'icon': Icons.warning,
-          'title': 'Dispositivo Offline',
-          'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
-          'time': formatDateTime(lastSeenTime),
-          'color': Colors.orange,
-        });
-      }
-
-      if ((device.battery ?? 100) < 20 && !inMaintenance) {
-        alerts.add({
-          'icon': Icons.battery_alert,
-          'title': 'Bateria Baixa',
-          'subtitle': '${device.deviceName} - ${device.battery}%',
-          'time': formatDateTime(lastSeenTime),
-          'color': Colors.red,
-        });
-      }
-    }
-    final limitedAlerts = alerts.take(3).toList();
-
-    return Container(
-      height: 250,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey,
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Alertas Recentes',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
+  return Container(
+    height: 250,
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.grey,
+          spreadRadius: 1,
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Alertas Recentes',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
+              ),
+            ),
+            const Spacer(),
+            Text(
+              'Ver Todos',
+              style: TextStyle(color: Colors.blue, fontSize: 12),
+            ),
+          ],
+        ),
+        const SizedBox(height: 15),
+        Expanded(
+          child: limitedAlerts.isEmpty
+              ? Center(
+                  child: Text(
+                    'Nenhum alerta recente',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                )
+              : Column(
+                  children: limitedAlerts
+                      .map(
+                        (alert) => _buildAlertItem(
+                          alert['icon'] as IconData,
+                          alert['title'] as String,
+                          alert['subtitle'] as String,
+                          alert['time'] as String,
+                          alert['color'] as Color,
+                        ),
+                      )
+                      .toList(),
                 ),
-              ),
-              const Spacer(),
-              Text(
-                'Ver Todos',
-                style: TextStyle(color: Colors.blue, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Expanded(
-            child:
-                limitedAlerts.isEmpty
-                    ? Center(
-                      child: Text(
-                        'Nenhum alerta recente',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    )
-                    : Column(
-                      children:
-                          limitedAlerts
-                              .map(
-                                (alert) => _buildAlertItem(
-                                  alert['icon'] as IconData,
-                                  alert['title'] as String,
-                                  alert['subtitle'] as String,
-                                  alert['time'] as String,
-                                  alert['color'] as Color,
-                                ),
-                              )
-                              .toList(),
-                    ),
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildServerStatusCard() {
     return Container(
@@ -3417,141 +3129,6 @@ void _deleteBssidMapping(int index) {
           fontSize: 12,
         ),
       ),
-    );
-  }
-
-  // ignore: unused_element
-  TableRow _buildDeviceRowFromDevice(
-    Device device, {
-    required bool showActions,
-  }) {
-    final lastSeenTime = parseLastSeen(device.lastSeen);
-    final online = isDeviceOnline(lastSeenTime);
-    final inMaintenance = device.maintenanceStatus ?? false;
-    final status =
-        inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
-    final statusColor =
-        inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
-
-    IconData deviceIcon = Icons.smartphone;
-    final modelLower = device.deviceModel?.toLowerCase() ?? '';
-    if (modelLower.contains('iphone')) {
-      deviceIcon = Icons.phone_iphone;
-    } else if (modelLower.contains('ipad')) {
-      deviceIcon = Icons.tablet_mac;
-    } else if (modelLower.contains('laptop') ||
-        modelLower.contains('thinkpad')) {
-      deviceIcon = Icons.laptop;
-    }
-
-    return TableRow(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
-      ),
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Row(
-            children: [
-              Icon(deviceIcon, size: 20, color: Colors.grey[600]),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      device.deviceName ?? 'N/A',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (device.battery != null && device.battery! > 0)
-                      Text(
-                        'Bateria: ${device.battery}%',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                      ),
-                    if (inMaintenance && device.maintenanceTicket != null)
-                      Text(
-                        'Chamado: ${device.maintenanceTicket}',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            device.deviceModel ?? 'N/A',
-            style: const TextStyle(fontSize: 14),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            device.imei ?? 'N/A',
-            style: const TextStyle(fontSize: 14),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            device.serialNumber ?? 'N/A',
-            style: const TextStyle(fontSize: 14),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              status,
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            formatDateTime(lastSeenTime),
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            device.unit ?? 'N/A',
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        if (showActions)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-            child: _CommandControls(
-              device: device,
-              serverIp: serverIp,
-              serverPort: serverPort,
-              token: token,
-            ),
-          ),
-      ],
     );
   }
 
