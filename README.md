@@ -125,8 +125,8 @@ Este projeto está licenciado sob a licença **MIT License**. Consulte o arquivo
 
 Para dúvidas, sugestões ou suporte, você pode entrar em contato com:
 
-* **Alexandre Calmon (TI Bahia)**
-* E-mail: [Seu Email Aqui] (Substitua por um e-mail de contato real)
+* **Alexandre Calmon**
+* E-mail: [alexandrecalmonjunior@gmail.com] 
 * GitHub: [alexandrecalmonjr](https://www.google.com/search?q=https://github.com/alexandrecalmonjr)
 
 -----
