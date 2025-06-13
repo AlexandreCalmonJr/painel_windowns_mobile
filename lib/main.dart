@@ -2,13 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+// Adicione estas dependências ao seu pubspec.yaml
+// file_picker: ^6.2.1
+// excel: ^2.0.0-null-safety-3
 import 'package:excel/excel.dart' as xls;
+import 'package:file_picker/file_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:painel_windowns/device_detail_screen.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:process/process.dart';
-
 
 // Constantes
 const Duration kOnlineTolerance = Duration(minutes: 60);
@@ -241,7 +245,8 @@ class Device {
 class DeviceService {
   Future<http.Response> _performHttpRequest({
     required Future<http.Response> Function() request,
-    required String errorMessage, required String body,
+    required String errorMessage,
+    required String body,
   }) async {
     int attempts = 0;
     while (attempts < kMaxRetries) {
@@ -252,11 +257,16 @@ class DeviceService {
           return response;
         } else {
           final errorData = jsonDecode(response.body);
-          throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
+          throw Exception(
+            errorData['error'] ??
+                'Erro ${response.statusCode}: ${response.reasonPhrase}',
+          );
         }
       } on TimeoutException {
         if (attempts == kMaxRetries) {
-          throw Exception('$errorMessage: Tempo limite esgotado após $kMaxRetries tentativas.');
+          throw Exception(
+            '$errorMessage: Tempo limite esgotado após $kMaxRetries tentativas.',
+          );
         }
         await Future.delayed(kRetryDelay);
       } on SocketException {
@@ -271,103 +281,153 @@ class DeviceService {
     throw Exception('$errorMessage após $kMaxRetries tentativas.');
   }
 
-  Future<String> createUnit(String ip, String port, String token, Unit unit) async {
+  Future<String> createUnit(
+    String ip,
+    String port,
+    String token,
+    Unit unit,
+  ) async {
     final response = await _performHttpRequest(
-      request: () => http.post(
-        Uri.parse('http://$ip:$port/api/units'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(unit.toJson()),
-      ),
-      errorMessage: 'Erro ao criar unidade', body: '',
+      request:
+          () => http.post(
+            Uri.parse('http://$ip:$port/api/units'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(unit.toJson()),
+          ),
+      errorMessage: 'Erro ao criar unidade',
+      body: '',
     );
     return 'Unidade criada com sucesso';
   }
 
-  Future<String> updateUnit(String ip, String port, String token, String unitName, Unit unit) async {
+  Future<String> updateUnit(
+    String ip,
+    String port,
+    String token,
+    String unitName,
+    Unit unit,
+  ) async {
     final response = await _performHttpRequest(
-      request: () => http.put(
-        Uri.parse('http://$ip:$port/api/units/$unitName'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(unit.toJson()),
-      ),
-      errorMessage: 'Erro ao atualizar unidade', body: '',
+      request:
+          () => http.put(
+            Uri.parse('http://$ip:$port/api/units/$unitName'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(unit.toJson()),
+          ),
+      errorMessage: 'Erro ao atualizar unidade',
+      body: '',
     );
     return 'Unidade atualizada com sucesso';
   }
 
-  Future<String> deleteUnit(String ip, String port, String token, String unitName) async {
+  Future<String> deleteUnit(
+    String ip,
+    String port,
+    String token,
+    String unitName,
+  ) async {
     final response = await _performHttpRequest(
-      request: () => http.delete(
-        Uri.parse('http://$ip:$port/api/units/$unitName'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ),
-      errorMessage: 'Erro ao excluir unidade', body: '',
+      request:
+          () => http.delete(
+            Uri.parse('http://$ip:$port/api/units/$unitName'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          ),
+      errorMessage: 'Erro ao excluir unidade',
+      body: '',
     );
     final data = jsonDecode(response.body);
     return data['message']?.toString() ?? 'Unidade excluída com sucesso';
   }
 
-  Future<String> createBssidMapping(String ip, String port, String token, BssidMapping mapping) async {
+  Future<String> createBssidMapping(
+    String ip,
+    String port,
+    String token,
+    BssidMapping mapping,
+  ) async {
     final response = await _performHttpRequest(
-      request: () => http.post(
-        Uri.parse('http://$ip:$port/api/bssid-mappings'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(mapping.toJson()),
-      ),
-      errorMessage: 'Erro ao criar mapeamento', body: '',
+      request:
+          () => http.post(
+            Uri.parse('http://$ip:$port/api/bssid-mappings'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(mapping.toJson()),
+          ),
+      errorMessage: 'Erro ao criar mapeamento',
+      body: '',
     );
     return 'Mapeamento de BSSID criado com sucesso';
   }
 
-  Future<String> updateBssidMapping(String ip, String port, String token, String macAddressRadio, BssidMapping mapping) async {
+  Future<String> updateBssidMapping(
+    String ip,
+    String port,
+    String token,
+    String macAddressRadio,
+    BssidMapping mapping,
+  ) async {
     final _ = await _performHttpRequest(
-      request: () => http.put(
-        Uri.parse('http://$ip:$port/api/bssid-mappings/$macAddressRadio'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(mapping.toJson()),
-      ),
+      request:
+          () => http.put(
+            Uri.parse('http://$ip:$port/api/bssid-mappings/$macAddressRadio'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(mapping.toJson()),
+          ),
       errorMessage: 'Erro ao atualizar mapeamento',
       body: '',
     );
     return 'Mapeamento de BSSID atualizado com sucesso';
   }
 
-  Future<String> deleteBssidMapping(String ip, String port, String token, String macAddressRadio) async {
+  Future<String> deleteBssidMapping(
+    String ip,
+    String port,
+    String token,
+    String macAddressRadio,
+  ) async {
     final response = await _performHttpRequest(
-      request: () => http.delete(
-        Uri.parse('http://$ip:$port/api/bssid-mappings/$macAddressRadio'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ),
-      errorMessage: 'Erro ao excluir mapeamento', body: '',
+      request:
+          () => http.delete(
+            Uri.parse('http://$ip:$port/api/bssid-mappings/$macAddressRadio'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          ),
+      errorMessage: 'Erro ao excluir mapeamento',
+      body: '',
     );
     return 'Mapeamento de BSSID excluído com sucesso';
   }
 
-  Future<List<Device>> fetchDevices(String ip, String port, String token, List<Unit> units) async {
+  Future<List<Device>> fetchDevices(
+    String ip,
+    String port,
+    String token,
+    List<Unit> units,
+  ) async {
     final response = await _performHttpRequest(
-      request: () => http.get(
-        Uri.parse('http://$ip:$port/api/devices'),
-        headers: {'Authorization': 'Bearer $token'},
-      ),
-      errorMessage: 'Erro ao buscar dispositivos', body: '',
+      request:
+          () => http.get(
+            Uri.parse('http://$ip:$port/api/devices'),
+            headers: {'Authorization': 'Bearer $token'},
+          ),
+      errorMessage: 'Erro ao buscar dispositivos',
+      body: '',
     );
 
     final data = jsonDecode(response.body);
@@ -385,16 +445,24 @@ class DeviceService {
           .cast<Device>()
           .toList();
     }
-    throw Exception('Resposta inválida: Esperado uma lista de dispositivos, recebido: ${data.runtimeType}');
+    throw Exception(
+      'Resposta inválida: Esperado uma lista de dispositivos, recebido: ${data.runtimeType}',
+    );
   }
 
-  Future<List<BssidMapping>> fetchBssidMappings(String ip, String port, String token) async {
+  Future<List<BssidMapping>> fetchBssidMappings(
+    String ip,
+    String port,
+    String token,
+  ) async {
     final response = await _performHttpRequest(
-      request: () => http.get(
-        Uri.parse('http://$ip:$port/api/bssid-mappings'),
-        headers: {'Authorization': 'Bearer $token'},
-      ),
-      errorMessage: 'Erro ao buscar mapeamentos de BSSID', body: '',
+      request:
+          () => http.get(
+            Uri.parse('http://$ip:$port/api/bssid-mappings'),
+            headers: {'Authorization': 'Bearer $token'},
+          ),
+      errorMessage: 'Erro ao buscar mapeamentos de BSSID',
+      body: '',
     );
 
     final data = jsonDecode(response.body);
@@ -415,43 +483,51 @@ class DeviceService {
     Map<String, dynamic> parameters,
   ) async {
     final response = await _performHttpRequest(
-      request: () => http.post(
-        Uri.parse('http://$ip:$port/api/executeCommand'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'serial_number': serialNumber,
-          'command': command,
-          'device_name': parameters['device_name'] ?? serialNumber,
-          ...parameters,
-        }),
-      ),
-      errorMessage: 'Erro ao enviar comando', body: '',
+      request:
+          () => http.post(
+            Uri.parse('http://$ip:$port/api/executeCommand'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'serial_number': serialNumber,
+              'command': command,
+              'device_name': parameters['device_name'] ?? serialNumber,
+              ...parameters,
+            }),
+          ),
+      errorMessage: 'Erro ao enviar comando',
+      body: '',
     );
 
     final data = jsonDecode(response.body);
     return data['message']?.toString() ?? 'Comando executado com sucesso';
   }
 
-  Future<String> deleteDevice(String ip, String port, String token, String serialNumber) async {
+  Future<String> deleteDevice(
+    String ip,
+    String port,
+    String token,
+    String serialNumber,
+  ) async {
     final response = await _performHttpRequest(
-      request: () => http.delete(
-        Uri.parse('http://$ip:$port/api/devices/$serialNumber'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ),
-      errorMessage: 'Erro ao excluir dispositivo', body: '',
+      request:
+          () => http.delete(
+            Uri.parse('http://$ip:$port/api/devices/$serialNumber'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          ),
+      errorMessage: 'Erro ao excluir dispositivo',
+      body: '',
     );
 
     final data = jsonDecode(response.body);
     return data['message']?.toString() ?? 'Dispositivo excluído com sucesso';
   }
 }
-
 
 class BssidMapping {
   final String macAddressRadio;
@@ -465,18 +541,17 @@ class BssidMapping {
   });
 
   Map<String, dynamic> toJson() => {
-        'mac_address_radio': macAddressRadio,
-        'sector': sector,
-        'floor': floor,
-      };
+    'mac_address_radio': macAddressRadio,
+    'sector': sector,
+    'floor': floor,
+  };
 
   factory BssidMapping.fromJson(Map<String, dynamic> json) => BssidMapping(
-        macAddressRadio: json['mac_address_radio'] as String,
-        sector: json['sector'] as String,
-        floor: json['floor'] as String,
-      );
+    macAddressRadio: json['mac_address_radio'] as String,
+    sector: json['sector'] as String,
+    floor: json['floor'] as String,
+  );
 }
-
 
 class UnitConfig {
   static Future<List<Unit>> loadUnits() async {
@@ -551,7 +626,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
   int? _sortColumnIndex;
   bool _isAscending = true;
 
-   // Novo estado para filtro
+  // Novo estado para filtro
 
   // Configurações de conexão
   String serverIp = '192.168.0.183';
@@ -559,42 +634,47 @@ class _MDMDashboardState extends State<MDMDashboard> {
   String token = 'seu_token_aqui';
 
   // Controladores de texto
+  late TextEditingController _deviceNameFilterController;
   late TextEditingController _ipController;
   late TextEditingController _portController;
   late TextEditingController _tokenController;
 
   // Método para construir os itens do menu
   List<Map<String, dynamic>> _generateAlerts({bool limit = false}) {
-  final alerts = <Map<String, dynamic>>[];
-  for (final device in devices) {
-    final lastSeenTime = parseLastSeen(device.lastSeen);
-    final online = isDeviceOnline(lastSeenTime);
-    final inMaintenance = device.maintenanceStatus ?? false;
+    final alerts = <Map<String, dynamic>>[];
+    for (final device in devices) {
+      final lastSeenTime = parseLastSeen(device.lastSeen);
+      final online = isDeviceOnline(lastSeenTime);
+      final inMaintenance = device.maintenanceStatus ?? false;
 
-    if (!online && !inMaintenance) {
-      alerts.add({
-        'icon': Icons.warning,
-        'title': 'Dispositivo Offline',
-        'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
-        'time': formatDateTime(lastSeenTime),
-        'color': Colors.orange,
-      });
-    }
+      if (!online && !inMaintenance) {
+        alerts.add({
+          'icon': Icons.warning,
+          'title': 'Dispositivo Offline',
+          'subtitle': '${device.deviceName} - ${device.deviceModel ?? 'N/A'}',
+          'time': formatDateTime(lastSeenTime),
+          'color': Colors.orange,
+        });
+      }
 
-    if ((device.battery ?? 100) < 20 && !inMaintenance) {
-      alerts.add({
-        'icon': Icons.battery_alert,
-        'title': 'Bateria Baixa',
-        'subtitle': '${device.deviceName} - ${device.battery}%',
-        'time': formatDateTime(lastSeenTime),
-        'color': Colors.red,
-      });
+      if ((device.battery ?? 100) < 20 && !inMaintenance) {
+        alerts.add({
+          'icon': Icons.battery_alert,
+          'title': 'Bateria Baixa',
+          'subtitle': '${device.deviceName} - ${device.battery}%',
+          'time': formatDateTime(lastSeenTime),
+          'color': Colors.red,
+        });
+      }
     }
+    return limit ? alerts.take(3).toList() : alerts;
   }
-  return limit ? alerts.take(3).toList() : alerts;
-}
 
-  TableRow _buildDeviceTableRow(Device device, {required bool showActions}) {
+  // Em main.dart, dentro da classe _MDMDashboardState
+// SUBSTITUA SEU MÉTODO ATUAL POR ESTE
+
+// Em main.dart, substitua o método inteiro por este
+TableRow _buildDeviceTableRow(Device device, {required bool showActions}) {
   final lastSeenTime = parseLastSeen(device.lastSeen);
   final online = isDeviceOnline(lastSeenTime);
   final inMaintenance = device.maintenanceStatus ?? false;
@@ -616,40 +696,58 @@ class _MDMDashboardState extends State<MDMDashboard> {
       border: const Border(bottom: BorderSide(color: Colors.grey)),
     ),
     children: [
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        child: Row(
-          children: [
-            Icon(deviceIcon, size: 20, color: Colors.grey[600]),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      // CÉLULA DO NOME AINDA CLICÁVEL, MAS COM ESTILO NORMAL
+      TableCell(
+        verticalAlignment: TableCellVerticalAlignment.middle,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DeviceDetailScreen(device: device),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              child: Row(
                 children: [
-                  Text(
-                    device.deviceName ?? 'N/A',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  Icon(deviceIcon, size: 20, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          device.deviceName ?? 'N/A',
+                          style: const TextStyle( // <-- ESTILO CORRIGIDO AQUI
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (device.battery != null && device.battery! > 0)
+                          Text(
+                            'Bateria: ${device.battery}%',
+                            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                          ),
+                        if (inMaintenance && device.maintenanceTicket != null)
+                          Text(
+                            'Chamado: ${device.maintenanceTicket}',
+                            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                          ),
+                      ],
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  if (device.battery != null && device.battery! > 0)
-                    Text(
-                      'Bateria: ${device.battery}%',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                    ),
-                  if (inMaintenance && device.maintenanceTicket != null)
-                    Text(
-                      'Chamado: ${device.maintenanceTicket}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                    ),
                 ],
               ),
             ),
-          ],
+          ),
         ),
       ),
+      // Células restantes (sem alterações)
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         child: Text(
@@ -739,34 +837,35 @@ class _MDMDashboardState extends State<MDMDashboard> {
   );
 }
 
- // Função para mostrar a caixa de diálogo de escolha de formato
+  // Função para mostrar a caixa de diálogo de escolha de formato
   void _showExportDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Exportar Dados de Localização'),
-        content: const Text('Escolha o formato para exportação:'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _exportDataAsJson();
-            },
-            child: const Text('Exportar como JSON'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Exportar Dados de Localização'),
+            content: const Text('Escolha o formato para exportação:'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _exportDataAsJson();
+                },
+                child: const Text('Exportar como JSON'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _exportDataAsExcel();
+                },
+                child: const Text('Exportar como Excel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _exportDataAsExcel();
-            },
-            child: const Text('Exportar como Excel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -774,7 +873,8 @@ class _MDMDashboardState extends State<MDMDashboard> {
   Future<void> _exportDataAsJson() async {
     final Map<String, dynamic> exportData = {
       'unidades': units.map((unit) => unit.toJson()).toList(),
-      'mapeamentos_bssid': bssidMappings.map((mapping) => mapping.toJson()).toList(),
+      'mapeamentos_bssid':
+          bssidMappings.map((mapping) => mapping.toJson()).toList(),
     };
 
     // Formata o JSON com indentação para melhor leitura
@@ -799,9 +899,13 @@ class _MDMDashboardState extends State<MDMDashboard> {
     final xls.Sheet bssidSheet = excel['Mapeamentos BSSID'];
     bssidSheet.appendRow(['BSSID', 'Setor', 'Andar']);
     for (final mapping in bssidMappings) {
-      bssidSheet.appendRow([mapping.macAddressRadio, mapping.sector, mapping.floor]);
+      bssidSheet.appendRow([
+        mapping.macAddressRadio,
+        mapping.sector,
+        mapping.floor,
+      ]);
     }
-    
+
     // Remove a folha padrão criada automaticamente
     excel.delete('Sheet1');
 
@@ -811,150 +915,333 @@ class _MDMDashboardState extends State<MDMDashboard> {
     }
   }
 
-
-Future<void> _showSaveFileDialog(String fileName, String extension, String path) async {
-  if (!mounted) return;
-  await showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Arquivo Salvo'),
-      content: Text('O arquivo $fileName.$extension foi salvo em:\n$path'),
-      actions: [
-        TextButton(
-          onPressed: () async {
-            try {
-              final processManager = LocalProcessManager();
-              if (Platform.isWindows) {
-                await processManager.run(['explorer.exe', '/select,"$path"']);
-              } else {
-                throw Exception('Plataforma não suportada para abrir pasta.');
-              }
-              if (!mounted) return;
-              Navigator.of(context).pop();
-            } catch (e) {
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao abrir pasta: $e')));
-            }
-          },
-          child: const Text('Abrir Pasta'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('OK'),
-        ),
-      ],
-    ),
-  );
-}
-  // Função auxiliar para salvar o arquivo (JSON ou Excel)
-Future<void> _saveFile(dynamic content, String fileName, String extension) async {
-  try {
-    final directory = await getApplicationDocumentsDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final path = '${directory.path}${Platform.pathSeparator}${fileName}_$timestamp.$extension';
-    final file = File(path);
-
-    if (content is String) {
-      await file.writeAsString(content);
-    } else if (content is List<int>) {
-      await file.writeAsBytes(content);
-    }
-
-    await _showSaveFileDialog(fileName, extension, path);
-  } catch (e) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Erro ao salvar o arquivo: $e')),
+  Future<void> _importData() async {
+    // 1. Usa o file_picker para selecionar um arquivo
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json', 'xlsx'],
     );
-  }
-}
 
-  void _deleteDevice(Device device) async {
-  try {
-    final serialNumber = device.serialNumber ?? '';
-    if (serialNumber.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Serial Number do dispositivo é inválido')),
-      );
+    if (result == null || result.files.single.path == null) {
+      _showSnackbar('Nenhum arquivo selecionado.', isError: true);
       return;
     }
-    final message = await _deviceService.deleteDevice(
-      serverIp,
-      serverPort,
-      token,
-      serialNumber,
-    );
-    setState(() {
-      devices.removeWhere((d) => d.serialNumber == serialNumber);
-    });
+
+    final file = File(result.files.single.path!);
+    final extension = result.files.single.extension?.toLowerCase();
+
+    try {
+      if (extension == 'json') {
+        await _importFromJson(file);
+      } else if (extension == 'xlsx') {
+        await _importFromExcel(file);
+      } else {
+        throw Exception('Formato de arquivo não suportado.');
+      }
+      _showSnackbar('Dados importados com sucesso!');
+    } catch (e) {
+      _showSnackbar('Erro ao importar arquivo: $e', isError: true);
+    } finally {
+      // Recarrega os dados do servidor para refletir as mudanças
+      await _loadUnits();
+      await _loadBssidMappings();
+      await _loadDevices();
+    }
+  }
+
+  Future<void> _importFromJson(File file) async {
+    final content = await file.readAsString();
+    final data = jsonDecode(content) as Map<String, dynamic>;
+
+    // Importar Unidades
+    if (data['unidades'] is List) {
+      final List<dynamic> unitList = data['unidades'];
+      for (final item in unitList) {
+        final unit = Unit.fromJson(item as Map<String, dynamic>);
+        // Lógica para criar ou atualizar
+        await _deviceService
+            .createUnit(serverIp, serverPort, token, unit)
+            .catchError(
+              (_) => _deviceService.updateUnit(
+                serverIp,
+                serverPort,
+                token,
+                unit.name,
+                unit,
+              ),
+            );
+      }
+    }
+
+    // Importar Mapeamentos BSSID
+    if (data['mapeamentos_bssid'] is List) {
+      final List<dynamic> bssidList = data['mapeamentos_bssid'];
+      for (final item in bssidList) {
+        final mapping = BssidMapping.fromJson(item as Map<String, dynamic>);
+        // Lógica para criar ou atualizar
+        await _deviceService
+            .createBssidMapping(serverIp, serverPort, token, mapping)
+            .catchError(
+              (_) => _deviceService.updateBssidMapping(
+                serverIp,
+                serverPort,
+                token,
+                mapping.macAddressRadio,
+                mapping,
+              ),
+            );
+      }
+    }
+  }
+
+  Future<void> _importFromExcel(File file) async {
+    final bytes = await file.readAsBytes();
+    final excel = xls.Excel.decodeBytes(bytes);
+
+    // Importar da folha 'Unidades'
+    final xls.Sheet? unitSheet = excel.tables['Unidades'];
+    if (unitSheet != null) {
+      for (var i = 1; i < unitSheet.rows.length; i++) {
+        // Começa em 1 para pular o cabeçalho
+        final row = unitSheet.rows[i];
+        if (row.length >= 3) {
+          final unit = Unit(
+            name: row[0]?.value?.toString() ?? '',
+            ipRangeStart: row[1]?.value?.toString() ?? '',
+            ipRangeEnd: row[2]?.value?.toString() ?? '',
+          );
+          if (unit.name.isNotEmpty) {
+            await _deviceService
+                .createUnit(serverIp, serverPort, token, unit)
+                .catchError(
+                  (_) => _deviceService.updateUnit(
+                    serverIp,
+                    serverPort,
+                    token,
+                    unit.name,
+                    unit,
+                  ),
+                );
+          }
+        }
+      }
+    }
+
+    // Importar da folha 'Mapeamentos BSSID'
+    final xls.Sheet? bssidSheet = excel.tables['Mapeamentos BSSID'];
+    if (bssidSheet != null) {
+      for (var i = 1; i < bssidSheet.rows.length; i++) {
+        // Começa em 1 para pular o cabeçalho
+        final row = bssidSheet.rows[i];
+        if (row.length >= 3) {
+          final mapping = BssidMapping(
+            macAddressRadio: row[0]?.value?.toString() ?? '',
+            sector: row[1]?.value?.toString() ?? '',
+            floor: row[2]?.value?.toString() ?? '',
+          );
+          if (mapping.macAddressRadio.isNotEmpty) {
+            await _deviceService
+                .createBssidMapping(serverIp, serverPort, token, mapping)
+                .catchError(
+                  (_) => _deviceService.updateBssidMapping(
+                    serverIp,
+                    serverPort,
+                    token,
+                    mapping.macAddressRadio,
+                    mapping,
+                  ),
+                );
+          }
+        }
+      }
+    }
+  }
+
+  void _showSnackbar(String message, {bool isError = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Erro ao excluir dispositivo: $e')),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      ),
     );
   }
-}
 
-  @override
-void initState() {
-  super.initState();
-  _ipController = TextEditingController(text: serverIp);
-  _portController = TextEditingController(text: serverPort);
-  _tokenController = TextEditingController(text: token);
-  _loadUnits();
-  _loadBssidMappings();
-  _loadDevices();
-  _initialize(); // Call the separate async initialization method
-}
-
-Future<void> _initialize() async {
-  await _loadUnits();
-  await _loadBssidMappings();
-  await _loadDevices();
-  _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
-    if (mounted) {
-      _loadDevices();
-      _loadBssidMappings();
-    }
-  });
-}
-Future<void> _loadUnits() async {
-  try {
-    final response = await http.get(
-      Uri.parse('http://$serverIp:$serverPort/api/units'),
-      // CORREÇÃO: Use a variável 'token' para autenticação
-      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+  Future<void> _showSaveFileDialog(
+    String fileName,
+    String extension,
+    String path,
+  ) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Arquivo Salvo'),
+            content: Text(
+              'O arquivo $fileName.$extension foi salvo em:\n$path',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  try {
+                    final processManager = LocalProcessManager();
+                    if (Platform.isWindows) {
+                      await processManager.run([
+                        'explorer.exe',
+                        '/select,"$path"',
+                      ]);
+                    } else {
+                      throw Exception(
+                        'Plataforma não suportada para abrir pasta.',
+                      );
+                    }
+                    if (!mounted) return;
+                    Navigator.of(context).pop();
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Erro ao abrir pasta: $e')),
+                    );
+                  }
+                },
+                child: const Text('Abrir Pasta'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
     );
-    
-    print('Resposta de /api/units: ${response.statusCode} - ${response.body}');
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      print('Dados brutos do servidor: $data');
-      final loadedUnits = data.map((json) => Unit.fromJson(json)).toList();
-      print('Unidades mapeadas: $loadedUnits');
-      setState(() {
-        units = loadedUnits;
-      });
-      print('Unidades após setState: $units');
-    } else {
-      throw Exception('Falha ao carregar unidades: ${response.body}');
+  }
+
+  // Função auxiliar para salvar o arquivo (JSON ou Excel)
+  Future<void> _saveFile(
+    dynamic content,
+    String fileName,
+    String extension,
+  ) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final path =
+          '${directory.path}${Platform.pathSeparator}${fileName}_$timestamp.$extension';
+      final file = File(path);
+
+      if (content is String) {
+        await file.writeAsString(content);
+      } else if (content is List<int>) {
+        await file.writeAsBytes(content);
+      }
+
+      await _showSaveFileDialog(fileName, extension, path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erro ao salvar o arquivo: $e')));
     }
-  } catch (e) {
-    print('Erro ao carregar unidades: $e');
-    if (mounted) {
+  }
+
+  void _deleteDevice(Device device) async {
+    try {
+      final serialNumber = device.serialNumber ?? '';
+      if (serialNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Serial Number do dispositivo é inválido'),
+          ),
+        );
+        return;
+      }
+      final message = await _deviceService.deleteDevice(
+        serverIp,
+        serverPort,
+        token,
+        serialNumber,
+      );
+      setState(() {
+        devices.removeWhere((d) => d.serialNumber == serialNumber);
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao carregar unidades: $e')),
+        SnackBar(content: Text('Erro ao excluir dispositivo: $e')),
       );
     }
   }
-}
 
+  @override
+  void initState() {
+    super.initState();
+    _ipController = TextEditingController(text: serverIp);
+    _portController = TextEditingController(text: serverPort);
+    _tokenController = TextEditingController(text: token);
+    _deviceNameFilterController = TextEditingController();
+    _loadUnits();
+    _loadBssidMappings();
+    _loadDevices();
+    _initialize(); // Call the separate async initialization method
+  }
+
+  Future<void> _initialize() async {
+    await _loadUnits();
+    await _loadBssidMappings();
+    await _loadDevices();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (mounted) {
+        _loadDevices();
+        _loadBssidMappings();
+      }
+    });
+  }
+
+  Future<void> _loadUnits() async {
+    try {
+      final response = await http.get(
+        Uri.parse('http://$serverIp:$serverPort/api/units'),
+        // CORREÇÃO: Use a variável 'token' para autenticação
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print(
+        'Resposta de /api/units: ${response.statusCode} - ${response.body}',
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        print('Dados brutos do servidor: $data');
+        final loadedUnits = data.map((json) => Unit.fromJson(json)).toList();
+        print('Unidades mapeadas: $loadedUnits');
+        setState(() {
+          units = loadedUnits;
+        });
+        print('Unidades após setState: $units');
+      } else {
+        throw Exception('Falha ao carregar unidades: ${response.body}');
+      }
+    } catch (e) {
+      print('Erro ao carregar unidades: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao carregar unidades: $e')),
+        );
+      }
+    }
+  }
 
   Future<void> _loadBssidMappings() async {
     try {
-      final mappings = await _deviceService.fetchBssidMappings(serverIp, serverPort, token);
+      final mappings = await _deviceService.fetchBssidMappings(
+        serverIp,
+        serverPort,
+        token,
+      );
       setState(() {
         bssidMappings = mappings;
       });
@@ -971,6 +1258,7 @@ Future<void> _loadUnits() async {
     _ipController.dispose();
     _portController.dispose();
     _tokenController.dispose();
+    _deviceNameFilterController.dispose();
     super.dispose();
   }
 
@@ -1032,121 +1320,131 @@ Future<void> _loadUnits() async {
   }
 
   Future<void> _downloadDevicesCsv() async {
-  final headers = [
-    'Dispositivo',
-    'Modelo',
-    'IMEI',
-    'Serial',
-    'Status',
-    'Última Sincronização',
-    'Bateria',
-    'Endereço IP',
-    'Rede',
-    'Endereço MAC',
-    'Em Manutenção',
-    'Chamado',
-    'Unidade',
-    'Setor',
-    'Andar',
-  ];
+    final headers = [
+      'Dispositivo',
+      'Modelo',
+      'IMEI',
+      'Serial',
+      'Status',
+      'Última Sincronização',
+      'Bateria',
+      'Endereço IP',
+      'Rede',
+      'Endereço MAC',
+      'Em Manutenção',
+      'Chamado',
+      'Unidade',
+      'Setor',
+      'Andar',
+    ];
 
-  final rows = devices.map((device) {
-    final lastSeenTime = parseLastSeen(device.lastSeen);
-    final online = isDeviceOnline(lastSeenTime);
-    final inMaintenance = device.maintenanceStatus ?? false;
-    final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
-    return [
-      device.deviceName,
-      device.deviceModel ?? 'N/A',
-      device.imei ?? 'N/A',
-      device.serialNumber ?? 'N/A',
-      status,
-      formatDateTime(lastSeenTime),
-      device.battery != null ? '${device.battery}%' : 'N/A',
-      device.ipAddress ?? 'N/A',
-      device.network ?? 'N/A',
-      device.macAddress ?? 'N/A',
-      inMaintenance ? 'Sim' : 'Não',
-      device.maintenanceTicket ?? 'N/A',
-      device.unit ?? 'N/A',
-      device.sector ?? 'N/A',
-      device.floor ?? 'N/A',
-    ].map((value) => '"${value.toString().replaceAll('"', '""')}"').join(',');
-  }).toList();
+    final rows =
+        devices.map((device) {
+          final lastSeenTime = parseLastSeen(device.lastSeen);
+          final online = isDeviceOnline(lastSeenTime);
+          final inMaintenance = device.maintenanceStatus ?? false;
+          final status =
+              inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+          return [
+                device.deviceName,
+                device.deviceModel ?? 'N/A',
+                device.imei ?? 'N/A',
+                device.serialNumber ?? 'N/A',
+                status,
+                formatDateTime(lastSeenTime),
+                device.battery != null ? '${device.battery}%' : 'N/A',
+                device.ipAddress ?? 'N/A',
+                device.network ?? 'N/A',
+                device.macAddress ?? 'N/A',
+                inMaintenance ? 'Sim' : 'Não',
+                device.maintenanceTicket ?? 'N/A',
+                device.unit ?? 'N/A',
+                device.sector ?? 'N/A',
+                device.floor ?? 'N/A',
+              ]
+              .map((value) => '"${value.toString().replaceAll('"', '""')}"')
+              .join(',');
+        }).toList();
 
-  final csvContent = [headers.join(','), ...rows].join('\n');
+    final csvContent = [headers.join(','), ...rows].join('\n');
 
-  try {
-    final directory = await getApplicationDocumentsDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final path = '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
-    final file = File(path);
-    await file.writeAsString(csvContent);
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final path =
+          '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
+      final file = File(path);
+      await file.writeAsString(csvContent);
 
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('CSV Salvo'),
-        content: Text('O arquivo CSV foi salvo em:\n$path'),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              try {
-                final processManager = LocalProcessManager();
-                if (Platform.isWindows) {
-                  await processManager.run([
-                    'explorer.exe',
-                    '/select,"$path"',
-                  ]);
-                } else {
-                  throw Exception('Plataforma não suportada para abrir pasta.');
-                }
-                if (!mounted) return;
-                Navigator.of(context).pop();
-              } catch (e) {
-                if (!mounted) return;
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Erro'),
-                    content: Text('Falha ao abrir pasta: $e'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('OK'),
-                      ),
-                    ],
-                  ),
-                );
-              }
-            },
-            child: const Text('Abrir Pasta'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  } catch (e) {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Erro'),
-        content: Text('Falha ao salvar o CSV: $e'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: const Text('CSV Salvo'),
+              content: Text('O arquivo CSV foi salvo em:\n$path'),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      final processManager = LocalProcessManager();
+                      if (Platform.isWindows) {
+                        await processManager.run([
+                          'explorer.exe',
+                          '/select,"$path"',
+                        ]);
+                      } else {
+                        throw Exception(
+                          'Plataforma não suportada para abrir pasta.',
+                        );
+                      }
+                      if (!mounted) return;
+                      Navigator.of(context).pop();
+                    } catch (e) {
+                      if (!mounted) return;
+                      showDialog(
+                        context: context,
+                        builder:
+                            (context) => AlertDialog(
+                              title: const Text('Erro'),
+                              content: Text('Falha ao abrir pasta: $e'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                      );
+                    }
+                  },
+                  child: const Text('Abrir Pasta'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: const Text('Erro'),
+              content: Text('Falha ao salvar o CSV: $e'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+      );
+    }
   }
-}
 
   List<Device> _filterDevices() {
     return devices.where((device) {
@@ -1449,7 +1747,6 @@ Future<void> _loadUnits() async {
                 ),
               ),
               const SizedBox(width: 20),
-
             ],
           ),
         ),
@@ -1691,306 +1988,363 @@ Future<void> _loadUnits() async {
     );
   }
 
- Widget _buildReportCard({required String title, required Widget child}) {
-  return Card(
-    elevation: 2,
-    margin: const EdgeInsets.only(bottom: 20),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
-            ),
-          ),
-          const SizedBox(height: 20),
-          child,
-        ],
-      ),
-    ),
-  );
-}
-
-
-// Função para agrupar dispositivos por um critério (unidade ou setor)
-Map<String, Map<String, int>> _groupDevicesBy(
-    List<Device> filteredDevices, String Function(Device) keySelector) {
-  final Map<String, Map<String, int>> reportData = {};
-
-  for (final device in filteredDevices) {
-    final key = keySelector(device);
-    reportData.putIfAbsent(
-        key, () => {'Online': 0, 'Offline': 0, 'Manutenção': 0, 'Total': 0});
-
-    final statusMap = reportData[key]!;
-    statusMap['Total'] = statusMap['Total']! + 1;
-    if (device.maintenanceStatus ?? false) {
-      statusMap['Manutenção'] = statusMap['Manutenção']! + 1;
-    } else if (isDeviceOnline(parseLastSeen(device.lastSeen))) {
-      statusMap['Online'] = statusMap['Online']! + 1;
-    } else {
-      statusMap['Offline'] = statusMap['Offline']! + 1;
-    }
-  }
-  return reportData;
-}
-
-// NOVO: Widget para o cabeçalho da tabela clicável (para ordenação)
-Widget _buildSortableTableHeader(String text, int columnIndex) {
-  return GestureDetector(
-    onTap: () {
-      setState(() {
-        if (_sortColumnIndex == columnIndex) {
-          _isAscending = !_isAscending;
-        } else {
-          _sortColumnIndex = columnIndex;
-          _isAscending = true;
-        }
-      });
-    },
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      child: Row(
-        children: [
-          Text(
-            text,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[600],
-              fontSize: 12,
-            ),
-          ),
-          if (_sortColumnIndex == columnIndex)
-            Icon(
-              _isAscending ? Icons.arrow_upward : Icons.arrow_downward,
-              size: 14,
-            )
-        ],
-      ),
-    ),
-  );
-}
-
-
-// --- WIDGETS DE RELATÓRIO ESPECÍFICOS ---
-
-// NOVO: Widget para o relatório de Conformidade
-Widget _buildComplianceReportCard(List<Device> filteredDevices) {
-  if (filteredDevices.isEmpty) return const SizedBox.shrink();
-  
-  final complianceCounts = filteredDevices
-      .fold<Map<String, int>>({}, (map, device) {
-        final status = device.complianceStatus ?? 'Desconhecido';
-        map[status] = (map[status] ?? 0) + 1;
-        return map;
-      });
-
-  return _buildReportCard(
-    title: 'Relatório de Conformidade',
-    child: SizedBox(
-      height: 150,
-      child: BarChart(
-        BarChartData(
-          barTouchData: BarTouchData(
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipItem: (group, groupIndex, rod, rodIndex) =>
-                  BarTooltipItem(
-                rod.toY.round().toString(),
-                const TextStyle(color: Colors.white),
-              ),
-            ),
-          ),
-          titlesData: FlTitlesData(
-            show: true,
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, meta) => Text(
-                  complianceCounts.keys.elementAt(value.toInt()),
-                  style: const TextStyle(fontSize: 10),
-                ),
-                reservedSize: 20,
-              ),
-            ),
-            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          barGroups: complianceCounts.entries.map((entry) {
-            final index = complianceCounts.keys.toList().indexOf(entry.key);
-            return BarChartGroupData(x: index, barRods: [
-              BarChartRodData(
-                toY: entry.value.toDouble(),
-                color: entry.key.toLowerCase() == 'compliant' ? Colors.cyan : Colors.orange,
-                width: 30,
-              ),
-            ]);
-          }).toList(),
-        ),
-      ),
-    ),
-  );
-}
-
-// NOVO: Widget para o relatório por Modelo
-// Widget para o relatório por Modelo (Alternativa com gráfico vertical)
-Widget _buildDeviceModelReportCard(List<Device> filteredDevices) {
-  if (filteredDevices.isEmpty) return const SizedBox.shrink();
-  
-  final modelCounts = filteredDevices.fold<Map<String, int>>({}, (map, device) {
-    final model = device.deviceModel ?? 'Desconhecido';
-    map[model] = (map[model] ?? 0) + 1;
-    return map;
-  });
-
-  return _buildReportCard(
-    title: 'Dispositivos por Modelo',
-    child: SizedBox(
-      height: 250, // Altura fixa para gráfico vertical
-      child: BarChart(
-        BarChartData(
-          // A LINHA "layout" FOI REMOVIDA DAQUI
-          barTouchData: BarTouchData(
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipItem: (group, groupIndex, rod, rodIndex) =>
-                  BarTooltipItem(
-                rod.toY.round().toString(),
-                const TextStyle(color: Colors.white),
-              ),
-            ),
-          ),
-          titlesData: FlTitlesData(
-            show: true,
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
-            // Títulos dos modelos agora na parte inferior
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, meta) {
-                  final index = value.toInt();
-                  if (index < 0 || index >= modelCounts.keys.length) {
-                    return const SizedBox.shrink();
-                  }
-                  return SideTitleWidget(
-                    space: 4,
-                    meta: meta,
-                    child: Text(
-                      modelCounts.keys.elementAt(index),
-                      style: const TextStyle(fontSize: 9), // Fonte menor para caber
-                    ),
-                  );
-                },
-                reservedSize: 40, // Espaço para nomes dos modelos na base
-              ),
-            ),
-          ),
-          barGroups: modelCounts.entries.map((entry) {
-            final index = modelCounts.keys.toList().indexOf(entry.key);
-            return BarChartGroupData(x: index, barRods: [
-              BarChartRodData(
-                  toY: entry.value.toDouble(), 
-                  color: Colors.purple, 
-                  width: 15 // Barras mais finas
-              ),
-            ]);
-          }).toList(),
-        ),
-      ),
-    ),
-  );
-}
-
-// Widget genérico e ORDENÁVEL para relatórios agrupados (Unidade, Setor)
-Widget _buildGroupedReportCard({
-  required String title,
-  required Map<String, Map<String, int>> data,
-}) {
-  if (data.isEmpty) return const SizedBox.shrink();
-
-  // Lógica de Ordenação
-  var sortedEntries = data.entries.toList();
-  if (_sortColumnIndex != null) {
-    sortedEntries.sort((a, b) {
-      Comparable? valueA;
-      Comparable? valueB;
-      switch (_sortColumnIndex) {
-        case 0: // Nome
-          valueA = a.key;
-          valueB = b.key;
-          break;
-        case 1: // Total
-          valueA = a.value['Total'];
-          valueB = b.value['Total'];
-          break;
-        case 2: // Online
-          valueA = a.value['Online'];
-          valueB = b.value['Online'];
-          break;
-      }
-      return _isAscending
-          ? Comparable.compare(valueA!, valueB!)
-          : Comparable.compare(valueB!, valueA!);
-    });
-  }
-
-  return _buildReportCard(
-    title: title,
-    child: Table(
-      border: TableBorder.all(color: Colors.grey[300]!),
-      columnWidths: const {
-        0: FlexColumnWidth(2),
-        1: FlexColumnWidth(1),
-        2: FlexColumnWidth(1),
-        3: FlexColumnWidth(1),
-        4: FlexColumnWidth(1),
-      },
-      children: [
-        TableRow(
-          decoration: BoxDecoration(color: Colors.grey[100]),
+  Widget _buildReportCard({required String title, required Widget child}) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSortableTableHeader('Nome', 0),
-            _buildSortableTableHeader('Total', 1),
-            _buildSortableTableHeader('Online', 2),
-            _buildTableHeader('Offline'),
-            _buildTableHeader('Manutenção'),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
+              ),
+            ),
+            const SizedBox(height: 20),
+            child,
           ],
         ),
-        ...sortedEntries.map((entry) => TableRow(
-              children: [
-                Padding(padding: const EdgeInsets.all(8.0), child: Text(entry.key)),
-                Padding(padding: const EdgeInsets.all(8.0), child: Text('${entry.value['Total']}')),
-                Padding(padding: const EdgeInsets.all(8.0), child: Text('${entry.value['Online']}')),
-                Padding(padding: const EdgeInsets.all(8.0), child: Text('${entry.value['Offline']}')),
-                Padding(padding: const EdgeInsets.all(8.0), child: Text('${entry.value['Manutenção']}')),
-              ],
-            )),
-      ],
-    ),
-  );
-}
+      ),
+    );
+  }
 
-// --- WIDGET PRINCIPAL DA ABA (ATUALIZADO) ---
+  // Função para agrupar dispositivos por um critério (unidade ou setor)
+  Map<String, Map<String, int>> _groupDevicesBy(
+    List<Device> filteredDevices,
+    String Function(Device) keySelector,
+  ) {
+    final Map<String, Map<String, int>> reportData = {};
+
+    for (final device in filteredDevices) {
+      final key = keySelector(device);
+      reportData.putIfAbsent(
+        key,
+        () => {'Online': 0, 'Offline': 0, 'Manutenção': 0, 'Total': 0},
+      );
+
+      final statusMap = reportData[key]!;
+      statusMap['Total'] = statusMap['Total']! + 1;
+      if (device.maintenanceStatus ?? false) {
+        statusMap['Manutenção'] = statusMap['Manutenção']! + 1;
+      } else if (isDeviceOnline(parseLastSeen(device.lastSeen))) {
+        statusMap['Online'] = statusMap['Online']! + 1;
+      } else {
+        statusMap['Offline'] = statusMap['Offline']! + 1;
+      }
+    }
+    return reportData;
+  }
+
+  // NOVO: Widget para o cabeçalho da tabela clicável (para ordenação)
+  Widget _buildSortableTableHeader(String text, int columnIndex) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (_sortColumnIndex == columnIndex) {
+            _isAscending = !_isAscending;
+          } else {
+            _sortColumnIndex = columnIndex;
+            _isAscending = true;
+          }
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Row(
+          children: [
+            Text(
+              text,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+                fontSize: 12,
+              ),
+            ),
+            if (_sortColumnIndex == columnIndex)
+              Icon(
+                _isAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 14,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- WIDGETS DE RELATÓRIO ESPECÍFICOS ---
+
+  // NOVO: Widget para o relatório de Conformidade
+  Widget _buildComplianceReportCard(List<Device> filteredDevices) {
+    if (filteredDevices.isEmpty) return const SizedBox.shrink();
+
+    final complianceCounts = filteredDevices.fold<Map<String, int>>({}, (
+      map,
+      device,
+    ) {
+      final status = device.complianceStatus ?? 'Desconhecido';
+      map[status] = (map[status] ?? 0) + 1;
+      return map;
+    });
+
+    return _buildReportCard(
+      title: 'Relatório de Conformidade',
+      child: SizedBox(
+        height: 150,
+        child: BarChart(
+          BarChartData(
+            barTouchData: BarTouchData(
+              touchTooltipData: BarTouchTooltipData(
+                getTooltipItem:
+                    (group, groupIndex, rod, rodIndex) => BarTooltipItem(
+                      rod.toY.round().toString(),
+                      const TextStyle(color: Colors.white),
+                    ),
+              ),
+            ),
+            titlesData: FlTitlesData(
+              show: true,
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  getTitlesWidget:
+                      (value, meta) => Text(
+                        complianceCounts.keys.elementAt(value.toInt()),
+                        style: const TextStyle(fontSize: 10),
+                      ),
+                  reservedSize: 20,
+                ),
+              ),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(showTitles: true, reservedSize: 30),
+              ),
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+            ),
+            barGroups:
+                complianceCounts.entries.map((entry) {
+                  final index = complianceCounts.keys.toList().indexOf(
+                    entry.key,
+                  );
+                  return BarChartGroupData(
+                    x: index,
+                    barRods: [
+                      BarChartRodData(
+                        toY: entry.value.toDouble(),
+                        color:
+                            entry.key.toLowerCase() == 'compliant'
+                                ? Colors.cyan
+                                : Colors.orange,
+                        width: 30,
+                      ),
+                    ],
+                  );
+                }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // NOVO: Widget para o relatório por Modelo
+  // Widget para o relatório por Modelo (Alternativa com gráfico vertical)
+  Widget _buildDeviceModelReportCard(List<Device> filteredDevices) {
+    if (filteredDevices.isEmpty) return const SizedBox.shrink();
+
+    final modelCounts = filteredDevices.fold<Map<String, int>>({}, (
+      map,
+      device,
+    ) {
+      final model = device.deviceModel ?? 'Desconhecido';
+      map[model] = (map[model] ?? 0) + 1;
+      return map;
+    });
+
+    return _buildReportCard(
+      title: 'Dispositivos por Modelo',
+      child: SizedBox(
+        height: 250, // Altura fixa para gráfico vertical
+        child: BarChart(
+          BarChartData(
+            // A LINHA "layout" FOI REMOVIDA DAQUI
+            barTouchData: BarTouchData(
+              touchTooltipData: BarTouchTooltipData(
+                getTooltipItem:
+                    (group, groupIndex, rod, rodIndex) => BarTooltipItem(
+                      rod.toY.round().toString(),
+                      const TextStyle(color: Colors.white),
+                    ),
+              ),
+            ),
+            titlesData: FlTitlesData(
+              show: true,
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(showTitles: true, reservedSize: 30),
+              ),
+              // Títulos dos modelos agora na parte inferior
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  getTitlesWidget: (value, meta) {
+                    final index = value.toInt();
+                    if (index < 0 || index >= modelCounts.keys.length) {
+                      return const SizedBox.shrink();
+                    }
+                    return SideTitleWidget(
+                      space: 4,
+                      meta: meta,
+                      child: Text(
+                        modelCounts.keys.elementAt(index),
+                        style: const TextStyle(
+                          fontSize: 9,
+                        ), // Fonte menor para caber
+                      ),
+                    );
+                  },
+                  reservedSize: 40, // Espaço para nomes dos modelos na base
+                ),
+              ),
+            ),
+            barGroups:
+                modelCounts.entries.map((entry) {
+                  final index = modelCounts.keys.toList().indexOf(entry.key);
+                  return BarChartGroupData(
+                    x: index,
+                    barRods: [
+                      BarChartRodData(
+                        toY: entry.value.toDouble(),
+                        color: Colors.purple,
+                        width: 15, // Barras mais finas
+                      ),
+                    ],
+                  );
+                }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget genérico e ORDENÁVEL para relatórios agrupados (Unidade, Setor)
+  Widget _buildGroupedReportCard({
+    required String title,
+    required Map<String, Map<String, int>> data,
+  }) {
+    if (data.isEmpty) return const SizedBox.shrink();
+
+    // Lógica de Ordenação
+    var sortedEntries = data.entries.toList();
+    if (_sortColumnIndex != null) {
+      sortedEntries.sort((a, b) {
+        Comparable? valueA;
+        Comparable? valueB;
+        switch (_sortColumnIndex) {
+          case 0: // Nome
+            valueA = a.key;
+            valueB = b.key;
+            break;
+          case 1: // Total
+            valueA = a.value['Total'];
+            valueB = b.value['Total'];
+            break;
+          case 2: // Online
+            valueA = a.value['Online'];
+            valueB = b.value['Online'];
+            break;
+        }
+        return _isAscending
+            ? Comparable.compare(valueA!, valueB!)
+            : Comparable.compare(valueB!, valueA!);
+      });
+    }
+
+    return _buildReportCard(
+      title: title,
+      child: Table(
+        border: TableBorder.all(color: Colors.grey[300]!),
+        columnWidths: const {
+          0: FlexColumnWidth(2),
+          1: FlexColumnWidth(1),
+          2: FlexColumnWidth(1),
+          3: FlexColumnWidth(1),
+          4: FlexColumnWidth(1),
+        },
+        children: [
+          TableRow(
+            decoration: BoxDecoration(color: Colors.grey[100]),
+            children: [
+              _buildSortableTableHeader('Nome', 0),
+              _buildSortableTableHeader('Total', 1),
+              _buildSortableTableHeader('Online', 2),
+              _buildTableHeader('Offline'),
+              _buildTableHeader('Manutenção'),
+            ],
+          ),
+          ...sortedEntries.map(
+            (entry) => TableRow(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(entry.key),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text('${entry.value['Total']}'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text('${entry.value['Online']}'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text('${entry.value['Offline']}'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text('${entry.value['Manutenção']}'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGET PRINCIPAL DA ABA (ATUALIZADO) ---
+  // SUBSTITUA TODO O SEU MÉTODO _buildReportsTab POR ESTE
 Widget _buildReportsTab() {
-  // Gera listas únicas para os filtros
+  // Gera listas únicas para os filtros de dropdown
   final uniqueUnits = ['Todas', ...devices.map((d) => d.unit).whereType<String>().toSet()];
   final uniqueSectors = ['Todos', ...devices.map((d) => d.sector).whereType<String>().toSet()];
 
-  // Lógica de Filtro
+  // Lógica de Filtro ATUALIZADA para incluir o nome do dispositivo
   final filteredDevices = devices.where((device) {
     final unitMatch = _selectedUnitFilter == 'Todas' || device.unit == _selectedUnitFilter;
     final sectorMatch = _selectedSectorFilter == 'Todos' || device.sector == _selectedSectorFilter;
-    return unitMatch && sectorMatch;
+    final nameMatch = _deviceNameFilterController.text.isEmpty ||
+        (device.deviceName ?? '')
+            .toLowerCase()
+            .contains(_deviceNameFilterController.text.toLowerCase());
+    return unitMatch && sectorMatch && nameMatch;
   }).toList();
   
-  // Calcula dados baseados nos dispositivos filtrados
+  // Calcula dados para os relatórios com base nos dispositivos já filtrados
   final unitReportData = _groupDevicesBy(filteredDevices, (d) => d.unit ?? 'Não especificada');
   final sectorReportData = _groupDevicesBy(filteredDevices, (d) => d.sector ?? 'Não especificado');
 
@@ -2003,20 +2357,91 @@ Widget _buildReportsTab() {
       ),
       const SizedBox(height: 20),
 
-      // --- ÁREA DE FILTROS ---
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
+      // --- ÁREA DE FILTROS APRIMORADA ---
+      _buildFiltersCard(uniqueUnits, uniqueSectors),
+      
+      const SizedBox(height: 20),
+      
+      if (isLoading)
+        const Center(child: CircularProgressIndicator())
+      else if (filteredDevices.isEmpty)
+         const Center(child: Padding(
+           padding: EdgeInsets.all(32.0),
+           child: Text("Nenhum dado encontrado para os filtros selecionados."),
+         ))
+      else ...[
+        // NOVO: Dashboard com Gráfico de Pizza
+        _buildOverallStatusPieChart(filteredDevices),
+
+        // Relatórios existentes, agora com dados filtrados
+        _buildComplianceReportCard(filteredDevices),
+        _buildDeviceModelReportCard(filteredDevices),
+        _buildGroupedReportCard(
+          title: 'Dispositivos por Unidade',
+          data: unitReportData,
+        ),
+        _buildGroupedReportCard(
+          title: 'Dispositivos por Setor',
+          data: sectorReportData,
+        ),
+      ]
+    ],
+  );
+}
+
+ // ADICIONE ESTES NOVOS WIDGETS À SUA CLASSE
+
+// NOVO: Widget para o card de filtros
+Widget _buildFiltersCard(List<String> uniqueUnits, List<String> uniqueSectors) {
+  return Card(
+    elevation: 2,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const Icon(Icons.filter_alt, color: Colors.blue),
-              const SizedBox(width: 10),
-              const Text("Filtros:", style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(width: 20),
+              const Icon(Icons.filter_alt, color: Colors.blueAccent),
+              const SizedBox(width: 8),
+              const Text("Filtros", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Filtro por Nome
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _deviceNameFilterController,
+                  decoration: InputDecoration(
+                    labelText: 'Nome do Dispositivo',
+                    hintText: 'Digite para buscar...',
+                    prefixIcon: const Icon(Icons.badge_outlined),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  onChanged: (value) {
+                    setState(() {}); // Dispara a reconstrução para aplicar o filtro
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
               // Filtro de Unidade
               Expanded(
-                child: DropdownButton<String>(
+                flex: 1,
+                child: DropdownButtonFormField<String>(
                   value: _selectedUnitFilter,
+                  decoration: InputDecoration(
+                    labelText: 'Unidade',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
                   onChanged: (String? newValue) {
                     setState(() {
                       _selectedUnitFilter = newValue!;
@@ -2027,11 +2452,17 @@ Widget _buildReportsTab() {
                   }).toList(),
                 ),
               ),
-              const SizedBox(width: 20),
+              const SizedBox(width: 16),
               // Filtro de Setor
               Expanded(
-                child: DropdownButton<String>(
+                flex: 1,
+                child: DropdownButtonFormField<String>(
                   value: _selectedSectorFilter,
+                   decoration: InputDecoration(
+                    labelText: 'Setor',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
                   onChanged: (String? newValue) {
                     setState(() {
                       _selectedSectorFilter = newValue!;
@@ -2044,114 +2475,203 @@ Widget _buildReportsTab() {
               ),
             ],
           ),
-        ),
+        ],
       ),
-      const SizedBox(height: 20),
+    ),
+  );
+}
+
+// NOVO: Widget para o Gráfico de Pizza
+Widget _buildOverallStatusPieChart(List<Device> filteredDevices) {
+  final statusCounts = <String, int>{
+    'Online': 0,
+    'Offline': 0,
+    'Em Manutenção': 0,
+  };
+
+  for (final device in filteredDevices) {
+    if (device.maintenanceStatus ?? false) {
+      statusCounts['Em Manutenção'] = statusCounts['Em Manutenção']! + 1;
+    } else if (isDeviceOnline(parseLastSeen(device.lastSeen))) {
+      statusCounts['Online'] = statusCounts['Online']! + 1;
+    } else {
+      statusCounts['Offline'] = statusCounts['Offline']! + 1;
+    }
+  }
+
+  final pieChartSections = statusCounts.entries
+    .where((entry) => entry.value > 0)
+    .map((entry) {
+      final isTouched = false; // Pode ser usado para animações de toque
+      final fontSize = isTouched ? 16.0 : 14.0;
+      final radius = isTouched ? 60.0 : 50.0;
       
-      if (isLoading)
-        const Center(child: CircularProgressIndicator())
-      else if (filteredDevices.isEmpty)
-         const Center(child: Text("Nenhum dado encontrado para os filtros selecionados."))
-      else ...[
-        // Visão Geral com Gráfico de Pizza
-        _buildReportCard(
-          title: 'Visão Geral do Status',
-          child: SizedBox( /* ... (código do gráfico de pizza não precisa mudar) ... */ ),
-        ),
-        
-        // NOVO: Relatório de Conformidade
-        _buildComplianceReportCard(filteredDevices),
+      switch (entry.key) {
+        case 'Online':
+          return PieChartSectionData(
+            color: Colors.green,
+            value: entry.value.toDouble(),
+            title: '${entry.value}',
+            radius: radius,
+            titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
+          );
+        case 'Offline':
+          return PieChartSectionData(
+            color: Colors.red,
+            value: entry.value.toDouble(),
+            title: '${entry.value}',
+            radius: radius,
+            titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
+          );
+        case 'Em Manutenção':
+          return PieChartSectionData(
+            color: Colors.blueGrey,
+            value: entry.value.toDouble(),
+            title: '${entry.value}',
+            radius: radius,
+            titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
+          );
+        default:
+          throw Error();
+      }
+    }).toList();
 
-        // NOVO: Relatório por Modelo
-        _buildDeviceModelReportCard(filteredDevices),
-
-        // Relatório por Unidade (agora ordenável)
-        _buildGroupedReportCard(
-          title: 'Dispositivos por Unidade',
-          data: unitReportData,
-        ),
-
-        // Relatório por Setor (agora ordenável)
-        _buildGroupedReportCard(
-          title: 'Dispositivos por Setor',
-          data: sectorReportData,
-        ),
-      ]
-    ],
-  );
-}
-
-Widget _buildAlertsTab() {
-  final alerts = _generateAlerts();
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        'Alertas',
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-          color: Colors.grey[800],
-        ),
-      ),
-      const SizedBox(height: 20),
-      Expanded(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey,
-                spreadRadius: 1,
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Todos os Alertas',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
+  return _buildReportCard(
+    title: 'Visão Geral do Status (${filteredDevices.length} dispositivos)',
+    child: SizedBox(
+      height: 200,
+      child: Row(
+        children: [
+          Expanded(
+            flex: 1,
+            child: PieChart(
+              PieChartData(
+                pieTouchData: PieTouchData(
+                  touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                    // Aqui você pode adicionar interatividade se desejar
+                  },
                 ),
+                borderData: FlBorderData(show: false),
+                sectionsSpace: 2,
+                centerSpaceRadius: 40,
+                sections: pieChartSections,
               ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: alerts.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Nenhum alerta disponível',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                      )
-                    : ListView(
-                        children: alerts
-                            .map(
-                              (alert) => _buildAlertItem(
-                                alert['icon'] as IconData,
-                                alert['title'] as String,
-                                alert['subtitle'] as String,
-                                alert['time'] as String,
-                                alert['color'] as Color,
-                              ),
-                            )
-                            .toList(),
-                      ),
-              ),
-            ],
+            ),
           ),
-        ),
+          Expanded(
+            flex: 1,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: statusCounts.entries.map((entry) {
+                return _buildLegendItem(
+                  color: entry.key == 'Online' ? Colors.green : (entry.key == 'Offline' ? Colors.red : Colors.blueGrey),
+                  text: '${entry.key} (${entry.value})',
+                );
+              }).toList(),
+            ),
+          )
+        ],
       ),
-    ],
+    ),
   );
 }
+
+// NOVO: Widget auxiliar para a legenda do gráfico
+Widget _buildLegendItem({required Color color, required String text}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4.0),
+    child: Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            shape: BoxShape.rectangle,
+            borderRadius: BorderRadius.circular(4),
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      ],
+    ),
+  );
+}
+
+  Widget _buildAlertsTab() {
+    final alerts = _generateAlerts();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Alertas',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[800],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey,
+                  spreadRadius: 1,
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Todos os Alertas',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Expanded(
+                  child:
+                      alerts.isEmpty
+                          ? Center(
+                            child: Text(
+                              'Nenhum alerta disponível',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          )
+                          : ListView(
+                            children:
+                                alerts
+                                    .map(
+                                      (alert) => _buildAlertItem(
+                                        alert['icon'] as IconData,
+                                        alert['title'] as String,
+                                        alert['subtitle'] as String,
+                                        alert['time'] as String,
+                                        alert['color'] as Color,
+                                      ),
+                                    )
+                                    .toList(),
+                          ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildSettingsTab() {
     return Column(
@@ -2286,547 +2806,603 @@ Widget _buildAlertsTab() {
   }
 
   Widget _buildUnitsTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Unidades e Localização',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
-          ),
-        ),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey,
-                spreadRadius: 1,
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Gerenciamento de Unidades',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-  children: [
-    Expanded(
-      child: ElevatedButton.icon(
-        onPressed: () => _showUnitDialog(),
-        icon: const Icon(Icons.add, size: 16),
-        label: const Text('Adicionar Unidade'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-      ),
-    ),
-    const SizedBox(width: 10),
-    Expanded(
-      child: ElevatedButton.icon(
-        onPressed: () => _showBssidMappingDialog(),
-        icon: const Icon(Icons.add, size: 16),
-        label: const Text('Adicionar Mapeamento BSSID'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-      ),
-    ),
-    const SizedBox(width: 10), // Espaçamento
-    // NOVO BOTÃO DE EXPORTAÇÃO
-    Expanded(
-      child: ElevatedButton.icon(
-        onPressed: _showExportDialog, // Chama a nova função
-        icon: const Icon(Icons.download, size: 16),
-        label: const Text('Exportar Dados'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green, // Cor diferente para destaque
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-      ),
-    ),
-  ],
-),
-              const SizedBox(height: 20),
-              Text(
-                'Unidades (Faixas de IP)',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Table(
-                columnWidths: const {
-                  0: FlexColumnWidth(2),
-                  1: FlexColumnWidth(2),
-                  2: FlexColumnWidth(2),
-                  3: FlexColumnWidth(1),
-                },
-                children: [
-                  TableRow(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[300]!),
-                      ),
-                    ),
-                    children: [
-                      _buildTableHeader('Nome da Unidade'),
-                      _buildTableHeader('IP Inicial'),
-                      _buildTableHeader('IP Final'),
-                      _buildTableHeader('Ações'),
-                    ],
-                  ),
-                  ...units.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final unit = entry.value;
-                    return TableRow(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 8,
-                          ),
-                          child: Text(
-                            unit.name,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 8,
-                          ),
-                          child: Text(
-                            unit.ipRangeStart,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 8,
-                          ),
-                          child: Text(
-                            unit.ipRangeEnd,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 8,
-                          ),
-                          child: Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 20),
-                                onPressed: () => _showUnitDialog(unit: unit, index: index),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  size: 20,
-                                  color: Colors.red,
-                                ),
-                                onPressed: () => _deleteUnit(index),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Mapeamentos de BSSID (Setor/Andar)',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Table(
-                columnWidths: const {
-                  0: FlexColumnWidth(2),
-                  1: FlexColumnWidth(2),
-                  2: FlexColumnWidth(2),
-                  3: FlexColumnWidth(1),
-                },
-                children: [
-                  TableRow(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[300]!),
-                      ),
-                    ),
-                    children: [
-                      _buildTableHeader('BSSID'),
-                      _buildTableHeader('Setor'),
-                      _buildTableHeader('Andar'),
-                      _buildTableHeader('Ações'),
-                    ],
-                  ),
-                  ...bssidMappings.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final mapping = entry.value;
-                    return TableRow(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 8,
-                          ),
-                          child: Text(
-                            mapping.macAddressRadio,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 8,
-                          ),
-                          child: Text(
-                            mapping.sector,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 8,
-                          ),
-                          child: Text(
-                            mapping.floor,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 8,
-                          ),
-                          child: Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 20),
-                                onPressed: () =>
-                                    _showBssidMappingDialog(mapping: mapping, index: index),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  size: 20,
-                                  color: Colors.red,
-                                ),
-                                onPressed: () => _deleteBssidMapping(index),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showUnitDialog({Unit? unit, int? index}) {
-  final nameController = TextEditingController(text: unit?.name);
-  final startIpController = TextEditingController(text: unit?.ipRangeStart);
-  final endIpController = TextEditingController(text: unit?.ipRangeEnd);
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(unit == null ? 'Adicionar Unidade' : 'Editar Unidade'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(
-            controller: nameController,
-            decoration: const InputDecoration(
-              labelText: 'Nome da Unidade',
-              border: OutlineInputBorder(),
+          Text(
+            'Unidades e Localização',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
             ),
           ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: startIpController,
-            decoration: const InputDecoration(
-              labelText: 'IP Inicial (ex.: 192.168.0.1)',
-              border: OutlineInputBorder(),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey,
+                  spreadRadius: 1,
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: endIpController,
-            decoration: const InputDecoration(
-              labelText: 'IP Final (ex.: 192.168.0.100)',
-              border: OutlineInputBorder(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Gerenciamento de Unidades',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // CÓDIGO CORRIGIDO (COM BOTÃO DE IMPORTAR)
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showUnitDialog(),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Adicionar Unidade'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showBssidMappingDialog(),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Adicionar Mapeamento BSSID'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // BOTÃO DE IMPORTAR (AGORA ADICIONADO)
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _importData, // Chama a função de importação
+                        icon: const Icon(Icons.upload_file, size: 16),
+                        label: const Text('Importar Dados'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange, // Cor de destaque
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // BOTÃO DE EXPORTAR
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _showExportDialog,
+                        icon: const Icon(Icons.download, size: 16),
+                        label: const Text('Exportar Dados'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Unidades (Faixas de IP)',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Table(
+                  columnWidths: const {
+                    0: FlexColumnWidth(2),
+                    1: FlexColumnWidth(2),
+                    2: FlexColumnWidth(2),
+                    3: FlexColumnWidth(1),
+                  },
+                  children: [
+                    TableRow(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Colors.grey[300]!),
+                        ),
+                      ),
+                      children: [
+                        _buildTableHeader('Nome da Unidade'),
+                        _buildTableHeader('IP Inicial'),
+                        _buildTableHeader('IP Final'),
+                        _buildTableHeader('Ações'),
+                      ],
+                    ),
+                    ...units.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final unit = entry.value;
+                      return TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Text(
+                              unit.name,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Text(
+                              unit.ipRangeStart,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Text(
+                              unit.ipRangeEnd,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 20),
+                                  onPressed:
+                                      () => _showUnitDialog(
+                                        unit: unit,
+                                        index: index,
+                                      ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    size: 20,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () => _deleteUnit(index),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Mapeamentos de BSSID (Setor/Andar)',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Table(
+                  columnWidths: const {
+                    0: FlexColumnWidth(2),
+                    1: FlexColumnWidth(2),
+                    2: FlexColumnWidth(2),
+                    3: FlexColumnWidth(1),
+                  },
+                  children: [
+                    TableRow(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Colors.grey[300]!),
+                        ),
+                      ),
+                      children: [
+                        _buildTableHeader('BSSID'),
+                        _buildTableHeader('Setor'),
+                        _buildTableHeader('Andar'),
+                        _buildTableHeader('Ações'),
+                      ],
+                    ),
+                    ...bssidMappings.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final mapping = entry.value;
+                      return TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Text(
+                              mapping.macAddressRadio,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Text(
+                              mapping.sector,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Text(
+                              mapping.floor,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 8,
+                            ),
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 20),
+                                  onPressed:
+                                      () => _showBssidMappingDialog(
+                                        mapping: mapping,
+                                        index: index,
+                                      ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    size: 20,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () => _deleteBssidMapping(index),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        TextButton(
-          onPressed: () async {
-            final name = nameController.text.trim();
-            final startIp = startIpController.text.trim();
-            final endIp = endIpController.text.trim();
+    );
+  }
 
-            print('Valores capturados: name=$name, startIp=$startIp, endIp=$endIp');
-
-            if (name.isEmpty || startIp.isEmpty || endIp.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Todos os campos são obrigatórios'),
+  void _showUnitDialog({Unit? unit, int? index}) {
+    final nameController = TextEditingController(text: unit?.name);
+    final startIpController = TextEditingController(text: unit?.ipRangeStart);
+    final endIpController = TextEditingController(text: unit?.ipRangeEnd);
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text(unit == null ? 'Adicionar Unidade' : 'Editar Unidade'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome da Unidade',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              );
-              return;
-            }
-
-            if (!_isValidIp(startIp) || !_isValidIp(endIp)) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Endereços IP inválidos'),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: startIpController,
+                  decoration: const InputDecoration(
+                    labelText: 'IP Inicial (ex.: 192.168.0.1)',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              );
-              return;
-            }
+                const SizedBox(height: 10),
+                TextField(
+                  controller: endIpController,
+                  decoration: const InputDecoration(
+                    labelText: 'IP Final (ex.: 192.168.0.100)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final name = nameController.text.trim();
+                  final startIp = startIpController.text.trim();
+                  final endIp = endIpController.text.trim();
 
-            try {
-              final newUnit = Unit(
-                name: name,
-                ipRangeStart: startIp,
-                ipRangeEnd: endIp,
-              );
-              print('Objeto Unit criado: ${newUnit.toJson()}');
-              if (index == null) {
-                await _deviceService.createUnit(serverIp, serverPort, token, newUnit);
-              } else {
-                await _deviceService.updateUnit(
-                    serverIp, serverPort, token, unit!.name, newUnit);
-              }
-              await _loadUnits();
-              await _loadDevices();
-              if (!mounted) return;
-              Navigator.of(context).pop();
-            } catch (e) {
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Erro: $e')),
-              );
-            }
-          },
-          child: const Text('Salvar'),
-        ),
-      ],
-    ),
-  );
-}
+                  print(
+                    'Valores capturados: name=$name, startIp=$startIp, endIp=$endIp',
+                  );
+
+                  if (name.isEmpty || startIp.isEmpty || endIp.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Todos os campos são obrigatórios'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (!_isValidIp(startIp) || !_isValidIp(endIp)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Endereços IP inválidos')),
+                    );
+                    return;
+                  }
+
+                  try {
+                    final newUnit = Unit(
+                      name: name,
+                      ipRangeStart: startIp,
+                      ipRangeEnd: endIp,
+                    );
+                    print('Objeto Unit criado: ${newUnit.toJson()}');
+                    if (index == null) {
+                      await _deviceService.createUnit(
+                        serverIp,
+                        serverPort,
+                        token,
+                        newUnit,
+                      );
+                    } else {
+                      await _deviceService.updateUnit(
+                        serverIp,
+                        serverPort,
+                        token,
+                        unit!.name,
+                        newUnit,
+                      );
+                    }
+                    await _loadUnits();
+                    await _loadDevices();
+                    if (!mounted) return;
+                    Navigator.of(context).pop();
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                  }
+                },
+                child: const Text('Salvar'),
+              ),
+            ],
+          ),
+    );
+  }
 
   void _showBssidMappingDialog({BssidMapping? mapping, int? index}) {
-    final macController =
-        TextEditingController(text: mapping?.macAddressRadio);
+    final macController = TextEditingController(text: mapping?.macAddressRadio);
     final sectorController = TextEditingController(text: mapping?.sector);
     final floorController = TextEditingController(text: mapping?.floor);
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-            mapping == null ? 'Adicionar Mapeamento BSSID' : 'Editar Mapeamento BSSID'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: macController,
-              decoration: const InputDecoration(
-                labelText: 'BSSID (ex.: 00:14:22:01:23:45)',
-                border: OutlineInputBorder(),
-              ),
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              mapping == null
+                  ? 'Adicionar Mapeamento BSSID'
+                  : 'Editar Mapeamento BSSID',
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: sectorController,
-              decoration: const InputDecoration(
-                labelText: 'Setor',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: floorController,
-              decoration: const InputDecoration(
-                labelText: 'Andar',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final mac = macController.text.trim();
-              final sector = sectorController.text.trim();
-              final floor = floorController.text.trim();
-
-              if (mac.isEmpty || sector.isEmpty || floor.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Todos os campos são obrigatórios'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: macController,
+                  decoration: const InputDecoration(
+                    labelText: 'BSSID (ex.: 00:14:22:01:23:45)',
+                    border: OutlineInputBorder(),
                   ),
-                );
-                return;
-              }
-
-              final macRegex = RegExp(
-                  r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$');
-              if (!macRegex.hasMatch(mac)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('BSSID inválido'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: sectorController,
+                  decoration: const InputDecoration(
+                    labelText: 'Setor',
+                    border: OutlineInputBorder(),
                   ),
-                );
-                return;
-              }
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: floorController,
+                  decoration: const InputDecoration(
+                    labelText: 'Andar',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final mac = macController.text.trim();
+                  final sector = sectorController.text.trim();
+                  final floor = floorController.text.trim();
 
-              try {
-                final newMapping = BssidMapping(
-                  macAddressRadio: mac,
-                  sector: sector,
-                  floor: floor,
-                );
-                if (index == null) {
-                  await _deviceService.createBssidMapping(
-                      serverIp, serverPort, token, newMapping);
-                } else {
-                  await _deviceService.updateBssidMapping(
-                      serverIp, serverPort, token, mapping!.macAddressRadio, newMapping);
-                }
-                await _loadBssidMappings();
-                await _loadDevices();
-                if (!mounted) return;
-                Navigator.of(context).pop();
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Erro: $e')),
-                );
-              }
-            },
-            child: const Text('Salvar'),
+                  if (mac.isEmpty || sector.isEmpty || floor.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Todos os campos são obrigatórios'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  final macRegex = RegExp(
+                    r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$',
+                  );
+                  if (!macRegex.hasMatch(mac)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('BSSID inválido')),
+                    );
+                    return;
+                  }
+
+                  try {
+                    final newMapping = BssidMapping(
+                      macAddressRadio: mac,
+                      sector: sector,
+                      floor: floor,
+                    );
+                    if (index == null) {
+                      await _deviceService.createBssidMapping(
+                        serverIp,
+                        serverPort,
+                        token,
+                        newMapping,
+                      );
+                    } else {
+                      await _deviceService.updateBssidMapping(
+                        serverIp,
+                        serverPort,
+                        token,
+                        mapping!.macAddressRadio,
+                        newMapping,
+                      );
+                    }
+                    await _loadBssidMappings();
+                    await _loadDevices();
+                    if (!mounted) return;
+                    Navigator.of(context).pop();
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                  }
+                },
+                child: const Text('Salvar'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
-void _deleteUnit(int index) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Confirmar Exclusão'),
-      content: const Text('Deseja excluir esta unidade?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        TextButton(
-          onPressed: () async {
-            try {
-              await _deviceService.deleteUnit(
-                  serverIp, serverPort, token, units[index].name);
-              await _loadUnits();
-              await _loadDevices();
-              if (!mounted) return;
-              Navigator.of(context).pop();
-            } catch (e) {
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Erro: $e')),
-              );
-            }
-          },
-          child: const Text('Excluir'),
-        ),
-      ],
-    ),
-  );
-}
+  void _deleteUnit(int index) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Confirmar Exclusão'),
+            content: const Text('Deseja excluir esta unidade?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  try {
+                    await _deviceService.deleteUnit(
+                      serverIp,
+                      serverPort,
+                      token,
+                      units[index].name,
+                    );
+                    await _loadUnits();
+                    await _loadDevices();
+                    if (!mounted) return;
+                    Navigator.of(context).pop();
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                  }
+                },
+                child: const Text('Excluir'),
+              ),
+            ],
+          ),
+    );
+  }
 
-void _deleteBssidMapping(int index) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Confirmar Exclusão'),
-      content: const Text('Deseja excluir este mapeamento de BSSID?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        TextButton(
-          onPressed: () async {
-            try {
-              await _deviceService.deleteBssidMapping(
-                  serverIp, serverPort, token, bssidMappings[index].macAddressRadio);
-              await _loadBssidMappings();
-              await _loadDevices();
-              if (!mounted) return;
-              Navigator.of(context).pop();
-            } catch (e) {
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Erro: $e')),
-              );
-            }
-          },
-          child: const Text('Excluir'),
-        ),
-      ],
-    ),
-  );
-}
+  void _deleteBssidMapping(int index) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Confirmar Exclusão'),
+            content: const Text('Deseja excluir este mapeamento de BSSID?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  try {
+                    await _deviceService.deleteBssidMapping(
+                      serverIp,
+                      serverPort,
+                      token,
+                      bssidMappings[index].macAddressRadio,
+                    );
+                    await _loadBssidMappings();
+                    await _loadDevices();
+                    if (!mounted) return;
+                    Navigator.of(context).pop();
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                  }
+                },
+                child: const Text('Excluir'),
+              ),
+            ],
+          ),
+    );
+  }
 
   Widget _buildMenuItem(IconData icon, String title, int index) {
     final isSelected = selectedIndex == index;
@@ -2899,162 +3475,166 @@ void _deleteBssidMapping(int index) {
   }
 
   Widget _buildManagedDevicesCard({
-  required bool showActions,
-  List<Device>? devices,
-}) {
-  final displayDevices = devices ?? this.devices;
-  return Container(
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.grey,
-          spreadRadius: 1,
-          blurRadius: 6,
-          offset: const Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Dispositivos Gerenciados',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
+    required bool showActions,
+    List<Device>? devices,
+  }) {
+    final displayDevices = devices ?? this.devices;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey,
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Dispositivos Gerenciados',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
               ),
-            ),
-            const Spacer(),
-            ElevatedButton.icon(
-              onPressed: _downloadDevicesCsv,
-              icon: const Icon(Icons.download, size: 20),
-              label: const Text('Baixar CSV'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                elevation: 0,
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: _downloadDevicesCsv,
+                icon: const Icon(Icons.download, size: 20),
+                label: const Text('Baixar CSV'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        Expanded(
-          child: SingleChildScrollView(
-            child: Table(
-              columnWidths: {
-                0: const FlexColumnWidth(2),
-                1: const FlexColumnWidth(2),
-                2: const FlexColumnWidth(2),
-                3: const FlexColumnWidth(2),
-                4: const FlexColumnWidth(1.5),
-                5: const FlexColumnWidth(2),
-                6: const FlexColumnWidth(2),
-                7: const FlexColumnWidth(2),
-                8: const FlexColumnWidth(2),
-                if (showActions) 9: const FlexColumnWidth(3),
-              },
-              children: [
-                TableRow(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Colors.grey[300]!),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Table(
+                columnWidths: {
+                  0: const FlexColumnWidth(2),
+                  1: const FlexColumnWidth(2),
+                  2: const FlexColumnWidth(2),
+                  3: const FlexColumnWidth(2),
+                  4: const FlexColumnWidth(1.5),
+                  5: const FlexColumnWidth(2),
+                  6: const FlexColumnWidth(2),
+                  7: const FlexColumnWidth(2),
+                  8: const FlexColumnWidth(2),
+                  if (showActions) 9: const FlexColumnWidth(3),
+                },
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[300]!),
+                      ),
                     ),
+                    children: [
+                      _buildTableHeader('Nome'),
+                      _buildTableHeader('Modelo'),
+                      _buildTableHeader('Serial'),
+                      _buildTableHeader('IMEI'),
+                      _buildTableHeader('Status'),
+                      _buildTableHeader('Última Sincronização'),
+                      _buildTableHeader('Unidade'),
+                      _buildTableHeader('Setor'),
+                      _buildTableHeader('Andar'),
+                      if (showActions) _buildTableHeader('Ações'),
+                    ],
                   ),
-                  children: [
-                    _buildTableHeader('Nome'),
-                    _buildTableHeader('Modelo'),
-                    _buildTableHeader('Serial'),
-                    _buildTableHeader('IMEI'),
-                    _buildTableHeader('Status'),
-                    _buildTableHeader('Última Sincronização'),
-                    _buildTableHeader('Unidade'),
-                    _buildTableHeader('Setor'),
-                    _buildTableHeader('Andar'),
-                    if (showActions) _buildTableHeader('Ações'),
-                  ],
-                ),
-                ...displayDevices.map(
-                  (device) => _buildDeviceTableRow(device, showActions: showActions),
-                ),
-              ],
+                  ...displayDevices.map(
+                    (device) =>
+                        _buildDeviceTableRow(device, showActions: showActions),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
-}
-Widget _buildRecentAlertsCard() {
-  final limitedAlerts = _generateAlerts(limit: true);
+        ],
+      ),
+    );
+  }
 
-  return Container(
-    height: 250,
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.grey,
-          spreadRadius: 1,
-          blurRadius: 6,
-          offset: const Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Alertas Recentes',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
-              ),
-            ),
-            const Spacer(),
-            Text(
-              'Ver Todos',
-              style: TextStyle(color: Colors.blue, fontSize: 12),
-            ),
-          ],
-        ),
-        const SizedBox(height: 15),
-        Expanded(
-          child: limitedAlerts.isEmpty
-              ? Center(
-                  child: Text(
-                    'Nenhum alerta recente',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                )
-              : Column(
-                  children: limitedAlerts
-                      .map(
-                        (alert) => _buildAlertItem(
-                          alert['icon'] as IconData,
-                          alert['title'] as String,
-                          alert['subtitle'] as String,
-                          alert['time'] as String,
-                          alert['color'] as Color,
-                        ),
-                      )
-                      .toList(),
+  Widget _buildRecentAlertsCard() {
+    final limitedAlerts = _generateAlerts(limit: true);
+
+    return Container(
+      height: 250,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey,
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Alertas Recentes',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
                 ),
-        ),
-      ],
-    ),
-  );
-}
+              ),
+              const Spacer(),
+              Text(
+                'Ver Todos',
+                style: TextStyle(color: Colors.blue, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          Expanded(
+            child:
+                limitedAlerts.isEmpty
+                    ? Center(
+                      child: Text(
+                        'Nenhum alerta recente',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    )
+                    : Column(
+                      children:
+                          limitedAlerts
+                              .map(
+                                (alert) => _buildAlertItem(
+                                  alert['icon'] as IconData,
+                                  alert['title'] as String,
+                                  alert['subtitle'] as String,
+                                  alert['time'] as String,
+                                  alert['color'] as Color,
+                                ),
+                              )
+                              .toList(),
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildServerStatusCard() {
     return Container(
@@ -3260,12 +3840,20 @@ class __CommandControlsState extends State<_CommandControls> {
             isExpanded: true,
             items: [
               const DropdownMenuItem(value: 'lock', child: Text('Bloquear')),
-              const DropdownMenuItem(value: 'uninstall_app', child: Text('Desinstalar App')),
-              const DropdownMenuItem(value: 'install_app', child: Text('Instalar App')),
+              const DropdownMenuItem(
+                value: 'uninstall_app',
+                child: Text('Desinstalar App'),
+              ),
+              const DropdownMenuItem(
+                value: 'install_app',
+                child: Text('Instalar App'),
+              ),
               DropdownMenuItem(
                 value: 'set_maintenance',
                 child: Text(
-                  inMaintenance ? 'Retornar à Produção' : 'Marcar como Manutenção',
+                  inMaintenance
+                      ? 'Retornar à Produção'
+                      : 'Marcar como Manutenção',
                 ),
               ),
             ],
@@ -3318,7 +3906,10 @@ class __CommandControlsState extends State<_CommandControls> {
                 onPressed: () async {
                   try {
                     final parameters = <String, dynamic>{
-                      'device_name': widget.device.deviceName ?? widget.device.serialNumber ?? 'N/A',
+                      'device_name':
+                          widget.device.deviceName ??
+                          widget.device.serialNumber ??
+                          'N/A',
                     };
                     if (selectedCommand == 'uninstall_app') {
                       if (packageController.text.trim().isEmpty) {
@@ -3334,20 +3925,27 @@ class __CommandControlsState extends State<_CommandControls> {
                       if (inMaintenance) {
                         final confirm = await showDialog<bool>(
                           context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Confirmar Retorno à Produção'),
-                            content: const Text('Deseja retornar este dispositivo à produção? O status de manutenção será removido.'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(false),
-                                child: const Text('Cancelar'),
+                          builder:
+                              (context) => AlertDialog(
+                                title: const Text(
+                                  'Confirmar Retorno à Produção',
+                                ),
+                                content: const Text(
+                                  'Deseja retornar este dispositivo à produção? O status de manutenção será removido.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(true),
+                                    child: const Text('Confirmar'),
+                                  ),
+                                ],
                               ),
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(true),
-                                child: const Text('Confirmar'),
-                              ),
-                            ],
-                          ),
                         );
                         if (confirm != true) return;
                         parameters['maintenance_status'] = false;
@@ -3357,17 +3955,24 @@ class __CommandControlsState extends State<_CommandControls> {
                           throw Exception('Número do Chamado é obrigatório.');
                         }
                         parameters['maintenance_status'] = true;
-                        parameters['maintenance_ticket'] = ticketController.text.trim();
+                        parameters['maintenance_ticket'] =
+                            ticketController.text.trim();
                       }
                       parameters['maintenance_history_entry'] = jsonEncode({
                         'timestamp': DateTime.now().toIso8601String(),
-                        'status': inMaintenance ? 'returned_to_production' : 'entered_maintenance',
-                        'ticket': inMaintenance ? null : ticketController.text.trim(),
+                        'status':
+                            inMaintenance
+                                ? 'returned_to_production'
+                                : 'entered_maintenance',
+                        'ticket':
+                            inMaintenance ? null : ticketController.text.trim(),
                       });
                     }
                     final serialNumber = widget.device.serialNumber ?? '';
                     if (serialNumber.isEmpty) {
-                      throw Exception('Serial Number do dispositivo é inválido.');
+                      throw Exception(
+                        'Serial Number do dispositivo é inválido.',
+                      );
                     }
                     final message = await _deviceService.sendCommand(
                       widget.serverIp,
@@ -3380,34 +3985,36 @@ class __CommandControlsState extends State<_CommandControls> {
                     if (!mounted) return;
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Sucesso'),
-                        content: Text(message),
-                        actions: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              _refreshDevices();
-                            },
-                            child: const Text('OK'),
+                      builder:
+                          (context) => AlertDialog(
+                            title: const Text('Sucesso'),
+                            content: Text(message),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  _refreshDevices();
+                                },
+                                child: const Text('OK'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
                     );
                   } catch (e) {
                     if (!mounted) return;
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Erro'),
-                        content: Text(e.toString()),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('OK'),
+                      builder:
+                          (context) => AlertDialog(
+                            title: const Text('Erro'),
+                            content: Text(e.toString()),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('OK'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
                     );
                   }
                 },
@@ -3424,26 +4031,31 @@ class __CommandControlsState extends State<_CommandControls> {
               onPressed: () async {
                 final confirm = await showDialog<bool>(
                   context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Confirmar Exclusão'),
-                    content: const Text('Deseja excluir este dispositivo permanentemente? Esta ação não pode ser desfeita.'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        child: const Text('Cancelar'),
+                  builder:
+                      (context) => AlertDialog(
+                        title: const Text('Confirmar Exclusão'),
+                        content: const Text(
+                          'Deseja excluir este dispositivo permanentemente? Esta ação não pode ser desfeita.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancelar'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Excluir'),
+                          ),
+                        ],
                       ),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        child: const Text('Excluir'),
-                      ),
-                    ],
-                  ),
                 );
                 if (confirm == true) {
                   try {
                     final serialNumber = widget.device.serialNumber ?? '';
                     if (serialNumber.isEmpty) {
-                      throw Exception('Serial Number do dispositivo é inválido.');
+                      throw Exception(
+                        'Serial Number do dispositivo é inválido.',
+                      );
                     }
                     final message = await _deviceService.deleteDevice(
                       widget.serverIp,
@@ -3454,35 +4066,37 @@ class __CommandControlsState extends State<_CommandControls> {
                     if (!mounted) return;
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Sucesso'),
-                        content: Text(message),
-                        actions: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              widget.onDelete?.call();
-                              _refreshDevices();
-                            },
-                            child: const Text('OK'),
+                      builder:
+                          (context) => AlertDialog(
+                            title: const Text('Sucesso'),
+                            content: Text(message),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  widget.onDelete?.call();
+                                  _refreshDevices();
+                                },
+                                child: const Text('OK'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
                     );
                   } catch (e) {
                     if (!mounted) return;
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Erro'),
-                        content: Text(e.toString()),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('OK'),
+                      builder:
+                          (context) => AlertDialog(
+                            title: const Text('Erro'),
+                            content: Text(e.toString()),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('OK'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
                     );
                   }
                 }
