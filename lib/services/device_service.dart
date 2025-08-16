@@ -51,12 +51,10 @@ class DeviceService {
     );
     final data = jsonDecode(response.body);
 
-    // O servidor sem paginação retorna uma lista diretamente
     if (data is List) {
       return data.map((json) => Device.fromJson(json, units)).toList();
     }
     
-    // Verificação de compatibilidade caso o servidor ainda use paginação
     if (data is Map<String, dynamic> && data.containsKey('devices')) {
       final devicesList = data['devices'] as List;
       return devicesList.map((json) => Device.fromJson(json, units)).toList();
@@ -83,7 +81,7 @@ class DeviceService {
   Future<String> sendCommand(String ip, String port, String token, String serialNumber, String command, Map<String, dynamic> parameters) async {
     final response = await _performHttpRequest(
       request: () => http.post(
-        Uri.parse('http://$ip:$port/api/executeCommand'), // Assumindo uma rota unificada
+        Uri.parse('http://$ip:$port/api/executeCommand'),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
         body: jsonEncode({
           'serial_number': serialNumber,
@@ -109,8 +107,6 @@ class DeviceService {
     return data['message']?.toString() ?? 'Dispositivo excluído com sucesso';
   }
 
-  // --- CRUD para Unidades e BSSID Mappings ---
-  
   Future<String> createUnit(String ip, String port, String token, Unit unit) async {
     await _performHttpRequest(
       request: () => http.post(

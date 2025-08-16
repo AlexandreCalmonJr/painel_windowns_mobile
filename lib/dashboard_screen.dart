@@ -10,6 +10,7 @@ import 'package:painel_windowns/models/bssid_mapping.dart';
 import 'package:painel_windowns/models/device.dart';
 import 'package:painel_windowns/models/unit.dart';
 import 'package:painel_windowns/services/device_service.dart';
+import 'package:painel_windowns/test_tab.dart';
 import 'package:painel_windowns/utils/helpers.dart';
 import 'package:painel_windowns/widgets/menu_item.dart';
 import 'package:painel_windowns/widgets/tabs/alerts_tab.dart';
@@ -184,7 +185,6 @@ class _MDMDashboardState extends State<MDMDashboard> {
       final oldDevice = oldDevicesMap[newDevice.serialNumber ?? ''];
       if (oldDevice == null) continue;
 
-      // Alerta de Status (Online/Offline)
       final oldOnline = isDeviceOnline(parseLastSeen(oldDevice.lastSeen));
       final newOnline = isDeviceOnline(parseLastSeen(newDevice.lastSeen));
       if (oldOnline != newOnline) {
@@ -205,7 +205,6 @@ class _MDMDashboardState extends State<MDMDashboard> {
         );
       }
 
-      // Alerta de Bateria Baixa
       final oldBattery = oldDevice.battery ?? 100;
       final newBattery = newDevice.battery ?? 100;
       if (newBattery < 20 && oldBattery >= 20) {
@@ -218,7 +217,6 @@ class _MDMDashboardState extends State<MDMDashboard> {
         );
       }
 
-      // Alerta de Mudança de Localização
       final oldLocation = '${oldDevice.sector ?? "N/A"} / ${oldDevice.floor ?? "N/A"}';
       final newLocation = '${newDevice.sector ?? "N/A"} / ${newDevice.floor ?? "N/A"}';
       if (newDevice.sector != null && oldLocation != newLocation) {
@@ -255,23 +253,17 @@ class _MDMDashboardState extends State<MDMDashboard> {
       progressIndicatorColor: color,
       animation: AnimationType.fromTop,
       displayCloseButton: true,
-      autoDismiss: true,
       toastDuration: const Duration(seconds: 8),
       position: Alignment.topCenter,
-      action: device != null 
-        ? TextButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => DeviceDetailScreen(device: device)),
-              );
-            },
-            child: const Text(
-              "VER DETALHES", 
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)
-            ),
-          )
-        : null,
+      action: const Text("VER DETALHES", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+      onActionPressed: () {
+        if (device != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => DeviceDetailScreen(device: device)),
+          );
+        }
+      },
     ).show(context);
   }
 
@@ -340,6 +332,8 @@ class _MDMDashboardState extends State<MDMDashboard> {
                 MenuItem(icon: Icons.settings, title: 'Configurações', index: 7, selectedIndex: selectedIndex, onTap: (index) => setState(() => selectedIndex = index)),
                 MenuItem(icon: Icons.build, title: 'Manutenção', index: 9, selectedIndex: selectedIndex, onTap: (index) => setState(() => selectedIndex = index)),
                 MenuItem(icon: Icons.business, title: 'Unidades', index: 8, selectedIndex: selectedIndex, onTap: (index) => setState(() => selectedIndex = index)),
+                const Divider(color: Colors.white24, indent: 16, endIndent: 16),
+                MenuItem(icon: Icons.bug_report_outlined, title: 'Testar Alertas', index: 10, selectedIndex: selectedIndex, onTap: (index) => setState(() => selectedIndex = index)),
               ],
             ),
           ),
@@ -397,6 +391,26 @@ class _MDMDashboardState extends State<MDMDashboard> {
       case 7: return SettingsTab(ipController: _ipController, portController: _portController, tokenController: _tokenController, onSettingsChanged: _onSettingsChanged);
       case 8: return UnitsTab(units: units, bssidMappings: bssidMappings, serverIp: serverIp, serverPort: serverPort, token: token, onDataUpdate: () { _loadUnits(); _loadBssidMappings(); _loadDevices(); });
       case 9: return MaintenanceTab(devices: _allFetchedDevices, serverIp: serverIp, serverPort: serverPort, token: token, onDeviceUpdate: onDataRefresh);
+      
+      case 10:
+        return TestTab(
+          onTestAlert: ({
+            required String title,
+            required Widget description,
+            required IconData icon,
+            required Color color,
+            required Device device,
+          }) {
+            _showRealTimeAlert(
+              title: title,
+              description: description,
+              icon: icon,
+              color: color,
+              device: device,
+            );
+          },
+        );
+
       default: return DashboardTab(devices: _allFetchedDevices, errorMessage: errorMessage);
     }
   }
