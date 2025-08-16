@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:elegant_notification/elegant_notification.dart';
 import 'package:elegant_notification/resources/arrays.dart';
 import 'package:flutter/material.dart';
-import 'package:painel_windowns/device_detail_screen.dart'; // Import da tela de detalhes
+import 'package:http/http.dart' as http;
 import 'package:painel_windowns/models/bssid_mapping.dart';
 import 'package:painel_windowns/models/device.dart';
 import 'package:painel_windowns/models/unit.dart';
@@ -21,6 +22,7 @@ import 'package:painel_windowns/widgets/tabs/settings_tab.dart';
 import 'package:painel_windowns/widgets/tabs/units_tab.dart';
 import 'package:painel_windowns/widgets/tabs/users_tab.dart';
 
+
 class MDMDashboard extends StatefulWidget {
   const MDMDashboard({super.key});
 
@@ -29,25 +31,30 @@ class MDMDashboard extends StatefulWidget {
 }
 
 class _MDMDashboardState extends State<MDMDashboard> {
-  // (O restante das variáveis de estado permanece o mesmo)
   int selectedIndex = 0;
+  
   bool _isSidebarVisible = true;
   List<Device> _previousDevices = [];
-  List<Device> _allFetchedDevices = [];
-  List<Device> _displayedDevices = [];
+
+  // Estados para paginação e busca do lado do cliente
+  List<Device> _allFetchedDevices = []; // Lista mestre com todos os dispositivos
+  List<Device> _displayedDevices = []; // Lista fatiada para exibição
   int _currentPage = 1;
   int _totalPages = 1;
   String _searchQuery = '';
   final int _devicesPerPage = 15;
+
   List<Unit> units = [];
   List<BssidMapping> bssidMappings = [];
   bool isLoading = false;
   String? errorMessage;
   final DeviceService _deviceService = DeviceService();
   Timer? _refreshTimer;
+
   String serverIp = '192.168.0.183';
   String serverPort = '3000';
   String token = 'seu_token_aqui';
+
   late TextEditingController _ipController;
   late TextEditingController _portController;
   late TextEditingController _tokenController;
@@ -62,25 +69,113 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Future<void> _initialize() async {
-    // (A lógica de inicialização permanece a mesma)
+    await _loadUnits();
+    await _loadBssidMappings();
+    await _loadDevices(isInitialLoad: true);
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (mounted) _loadDevices();
+    });
   }
 
   @override
   void dispose() {
-    // (A lógica de dispose permanece a mesma)
+    _refreshTimer?.cancel();
+    _ipController.dispose();
+    _portController.dispose();
+    _tokenController.dispose();
+    super.dispose();
   }
 
-  // (As funções de load, paginação e busca permanecem as mesmas)
-  Future<void> _loadUnits() async { /* ... */ }
-  Future<void> _loadBssidMappings() async { /* ... */ }
-  Future<void> _loadDevices({bool isInitialLoad = false}) async { /* ... */ }
-  void _updateDisplayedDevices() { /* ... */ }
-  void _changePage(int direction) { /* ... */ }
-  void _performSearch(String query) { /* ... */ }
-  void _onSettingsChanged(String newIp, String newPort, String newToken) { /* ... */ }
-  void _showSnackbar(String message, {bool isError = false}) { /* ... */ }
-  
-  // --- FUNÇÃO _checkForAlerts ATUALIZADA ---
+  Future<void> _loadUnits() async {
+    try {
+      final response = await http.get(
+        Uri.parse('http://$serverIp:$serverPort/api/units'),
+        headers: { 'Authorization': 'Bearer $token' },
+      );
+      if (mounted && response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() => units = data.map((json) => Unit.fromJson(json)).toList());
+      }
+    } catch (e) {
+      if (mounted) _showSnackbar('Erro ao carregar unidades: $e', isError: true);
+    }
+  }
+
+  Future<void> _loadBssidMappings() async {
+     try {
+      final mappings = await _deviceService.fetchBssidMappings(serverIp, serverPort, token);
+      if(mounted) setState(() => bssidMappings = mappings);
+    } catch (e) {
+      if (mounted) _showSnackbar('Erro ao carregar mapeamentos: $e', isError: true);
+    }
+  }
+
+  Future<void> _loadDevices({bool isInitialLoad = false}) async {
+    if (!mounted) return;
+    setState(() { isLoading = true; errorMessage = null; });
+
+    try {
+      final fetchedDevices = await _deviceService.fetchDevices(serverIp, serverPort, token, units);
+      if (mounted) {
+        if (!isInitialLoad) _previousDevices = List.from(_allFetchedDevices);
+        
+        setState(() {
+          _allFetchedDevices = fetchedDevices;
+          if (!isInitialLoad) _checkForAlerts(_previousDevices, _allFetchedDevices);
+          _updateDisplayedDevices();
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => errorMessage = e.toString());
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  void _updateDisplayedDevices() {
+    List<Device> filteredList = List.from(_allFetchedDevices);
+
+    if (_searchQuery.isNotEmpty) {
+      filteredList = _allFetchedDevices.where((device) {
+        final query = _searchQuery.toLowerCase();
+        return (device.deviceName?.toLowerCase().contains(query) ?? false) ||
+               (device.serialNumber?.toLowerCase().contains(query) ?? false) ||
+               (device.imei?.toLowerCase().contains(query) ?? false);
+      }).toList();
+    }
+
+    _totalPages = (filteredList.length / _devicesPerPage).ceil();
+    if (_totalPages == 0) _totalPages = 1;
+    if (_currentPage > _totalPages) _currentPage = _totalPages;
+
+    final startIndex = (_currentPage - 1) * _devicesPerPage;
+    final endIndex = (startIndex + _devicesPerPage > filteredList.length) 
+        ? filteredList.length 
+        : startIndex + _devicesPerPage;
+    
+    setState(() {
+      _displayedDevices = filteredList.sublist(startIndex, endIndex);
+    });
+  }
+
+  void _changePage(int direction) {
+    final newPage = _currentPage + direction;
+    if (newPage > 0 && newPage <= _totalPages) {
+      setState(() {
+        _currentPage = newPage;
+        _updateDisplayedDevices();
+      });
+    }
+  }
+
+  void _performSearch(String query) {
+    setState(() {
+      _searchQuery = query;
+      _currentPage = 1;
+      _updateDisplayedDevices();
+    });
+  }
+
   void _checkForAlerts(List<Device> oldDevices, List<Device> newDevices) {
     if (oldDevices.isEmpty) return;
 
@@ -90,97 +185,95 @@ class _MDMDashboardState extends State<MDMDashboard> {
       final oldDevice = oldDevicesMap[newDevice.serialNumber ?? ''];
       if (oldDevice == null) continue;
 
-      // Alerta de Status (Online/Offline)
       final oldOnline = isDeviceOnline(parseLastSeen(oldDevice.lastSeen));
       final newOnline = isDeviceOnline(parseLastSeen(newDevice.lastSeen));
       if (oldOnline != newOnline) {
-        final lastSeenTime = parseLastSeen(newDevice.lastSeen);
         _showRealTimeAlert(
-          title: 'Mudança de Status: ${newDevice.deviceName}',
-          description: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('O dispositivo ficou ${newOnline ? "Online" : "Offline"}.'),
-              if (!newOnline && lastSeenTime != null)
-                Text('Última vez visto: ${formatDateTime(lastSeenTime)}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
-            ],
-          ),
-          icon: newOnline ? Icons.wifi : Icons.wifi_off,
-          color: newOnline ? Colors.blueAccent : Colors.orange,
-          device: newDevice,
+          title: 'Mudança de Status',
+          description: '${newDevice.deviceName} ficou ${newOnline ? "Online" : "Offline"}.',
+          type: NotificationType.info,
         );
       }
 
-      // Alerta de Bateria Baixa
       final oldBattery = oldDevice.battery ?? 100;
       final newBattery = newDevice.battery ?? 100;
       if (newBattery < 20 && oldBattery >= 20) {
         _showRealTimeAlert(
-          title: 'Bateria Baixa: ${newDevice.deviceName}',
-          description: Text('O nível da bateria atingiu ${newBattery.toInt()}%.'),
-          icon: Icons.battery_alert,
-          color: Colors.red,
-          device: newDevice,
+          title: 'Bateria Baixa',
+          description: 'A bateria de ${newDevice.deviceName} está em ${newBattery.toInt()}%.',
+          type: NotificationType.error,
         );
       }
 
-      // Alerta de Mudança de Localização
-      final oldLocation = '${oldDevice.sector ?? "N/A"} / ${oldDevice.floor ?? "N/A"}';
-      final newLocation = '${newDevice.sector ?? "N/A"} / ${newDevice.floor ?? "N/A"}';
-      if (newDevice.sector != null && oldLocation != newLocation) {
+      if (newDevice.sector != null && (oldDevice.sector != newDevice.sector || oldDevice.floor != newDevice.floor)) {
          _showRealTimeAlert(
-          title: 'Mudança de Localização: ${newDevice.deviceName}',
-          description: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('De: $oldLocation', style: const TextStyle(fontSize: 12)),
-              Text('Para: $newLocation', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          icon: Icons.location_on,
-          color: Colors.purple,
-          device: newDevice,
+          title: 'Mudança de Localização',
+          description: '${newDevice.deviceName} foi movido para ${newDevice.sector} - ${newDevice.floor}.',
+          type: NotificationType.info, 
         );
       }
     }
   }
 
-  // --- FUNÇÃO _showRealTimeAlert ATUALIZADA ---
   void _showRealTimeAlert({
     required String title, 
-    required Widget description, 
-    required IconData icon,
-    required Color color,
-    Device? device, // Parâmetro opcional para o botão de ação
+    required String description, 
+    required NotificationType type
   }) {
     if (!mounted) return;
     
-    ElegantNotification(
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-      description: description,
-      icon: Icon(icon, color: color),
-      progressIndicatorColor: color,
-      animation: AnimationType.fromTop,
-      displayCloseButton: true,
-      autoDismiss: true,
-      toastDuration: const Duration(seconds: 8),
-      position: Alignment.topCenter,
-      // Adicionando o botão de ação
-      action: device != null 
-        ? TextButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => DeviceDetailScreen(device: device)),
-              );
-            },
-            child: const Text(
-              "VER DETALHES", 
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)
-            ),
-          )
-        : null,
-    ).show(context);
+    switch(type) {
+      case NotificationType.info:
+        ElegantNotification.info(
+          title: Text(title),
+          description: Text(description),
+          animation: AnimationType.fromTop,
+          toastDuration: const Duration(seconds: 5),
+        ).show(context);
+        break;
+      case NotificationType.error:
+         ElegantNotification.error(
+          title: Text(title),
+          description: Text(description),
+          animation: AnimationType.fromTop,
+          toastDuration: const Duration(seconds: 5),
+        ).show(context);
+        break;
+      case NotificationType.success:
+         ElegantNotification.success(
+          title: Text(title),
+          description: Text(description),
+          animation: AnimationType.fromTop,
+          toastDuration: const Duration(seconds: 5),
+        ).show(context);
+        break;
+      default: 
+        ElegantNotification(
+          title: Text(title),
+          description: Text(description),
+          icon: const Icon(Icons.info, color: Colors.blue),
+          progressIndicatorColor: Colors.blue,
+        ).show(context);
+        break;
+    }
+  }
+
+  void _onSettingsChanged(String newIp, String newPort, String newToken) {
+    setState(() {
+      serverIp = newIp;
+      serverPort = newPort;
+      token = newToken;
+    });
+    _loadDevices(isInitialLoad: true);
+    _loadUnits();
+    _loadBssidMappings();
+  }
+
+  void _showSnackbar(String message, {bool isError = false}) {
+     if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: isError ? Colors.red : Colors.green),
+    );
   }
 
   @override
