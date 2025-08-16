@@ -46,7 +46,7 @@ class _DevicesTabState extends State<DevicesTab> {
       if (_debounce?.isActive ?? false) _debounce!.cancel();
       _debounce = Timer(const Duration(milliseconds: 500), () {
         // Verifica se o texto realmente mudou para evitar buscas desnecessárias
-        if (mounted && _searchController.text != (widget as DevicesTab).onSearch.toString()) {
+        if (mounted && _searchController.text != (widget).onSearch.toString()) {
            widget.onSearch(_searchController.text);
         }
       });
