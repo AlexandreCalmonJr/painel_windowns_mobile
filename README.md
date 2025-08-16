@@ -1,132 +1,211 @@
-# Painel Windowns Mobile
+# Painel de Controle MDM
 
-Um novo projeto Flutter focado no gerenciamento e monitoramento de dispositivos, projetado para fornecer uma visão abrangente e controle sobre seu parque de equipamentos.
+Sistema de gerenciamento de dispositivos móveis (MDM) composto por um servidor backend em Node.js e uma aplicação desktop em Flutter para monitoramento e controle em tempo real.
 
-## 📝 Descrição
+## 🚀 Principais Funcionalidades
 
-O Painel Windowns Mobile é uma aplicação Flutter desenvolvida para auxiliar no gerenciamento de dispositivos, fornecendo um painel intuitivo para monitoramento de status, envio de comandos e organização de equipamentos por unidades e setores. Ele permite visualizar informações detalhadas dos dispositivos, histórico de manutenção e status de conectividade (online/offline), além de gerar relatórios e alertas em tempo real.
+- **Monitoramento em Tempo Real**: Atualização automática do status dos dispositivos a cada 15 segundos
+- **Alertas Proativos**: Notificações para eventos críticos (dispositivo offline, bateria baixa, mudança de localização)
+- **Lista de Dispositivos Avançada**: Busca, filtragem e paginação do lado do cliente
+- **Gerenciamento de Dispositivos**: Envio de comandos como bloqueio, (des)instalação de apps e gerenciamento de manutenção
+- **Gerenciamento de Localização**: Cadastro de unidades por IP e setores por BSSID de Wi-Fi
+- **Relatórios Interativos**: Gráficos clicáveis com insights dos dados coletados
+- **Visualização Detalhada**: Tela de detalhes com histórico completo de cada dispositivo
 
-## ✨ Funcionalidades
+## 📁 Estrutura do Projeto
 
-O aplicativo oferece um conjunto robusto de funcionalidades para o gerenciamento eficiente de dispositivos:
+```
+projeto-mdm/
+├── servidor-mdm/
+│   ├── logs/                 # Arquivos de log
+│   ├── node_modules/         # Dependências Node.js
+│   ├── .env                  # Variáveis de ambiente
+│   ├── package.json
+│   └── server.js             # Servidor principal
+└── painel_windowns/
+    ├── lib/
+    │   ├── config/           # Configurações
+    │   ├── models/           # Modelos de dados
+    │   ├── services/         # Comunicação com API
+    │   ├── utils/            # Funções auxiliares
+    │   ├── widgets/          # Componentes UI
+    │   ├── dashboard_screen.dart
+    │   ├── device_detail_screen.dart
+    │   └── main.dart
+    └── pubspec.yaml
+```
 
-* **Painel de Controle (Dashboard)**:
-  * Visão geral do total de dispositivos, dispositivos seguros, em risco e em manutenção.
-  * Filtro de dispositivos por status (Online, Offline, Em Manutenção, Todos).
-  * Visualização de alertas recentes sobre dispositivos offline ou com bateria baixa.
-* **Detalhes do Dispositivo**:
-  * Informações principais do dispositivo, incluindo modelo, serial, IMEI, bateria, endereço IP, MAC, última sincronização, unidade, setor e andar.
-  * Status de conectividade (Online/Offline) com destaque visual.
-  * Histórico de Manutenção com detalhes de entrada e saída de manutenção, incluindo número do chamado.
-  * Histórico de Status (Online/Offline) simulado para visualização da conectividade do dispositivo.
-* **Gerenciamento de Dispositivos**:
-  * Listagem completa de dispositivos gerenciados.
-  * Envio de comandos remotos:
-    * Bloquear dispositivo.
-    * Desinstalar aplicativo (requer nome do pacote).
-    * Instalar aplicativo (requer URL do APK).
-    * Marcar/Retornar de Manutenção (requer número de chamado ao entrar em manutenção).
-  * Exclusão de dispositivos.
-  * Download da lista de dispositivos em formato CSV.
-* **Servidor**:
-  * Visualização da configuração atual do servidor (IP e Porta).
-  * Métricas básicas de uso de CPU e Memória (simulado no frontend).
-* **Configurações**:
-  * Configuração do IP, Porta do Servidor e Token de Autenticação.
-  * Validação de token e atualização dos dados do servidor.
-* **Gerenciamento de Unidades e Localização**:
-  * **Unidades**: Adicionar, editar e excluir unidades baseadas em faixas de IP.
-  * **Mapeamentos BSSID**: Adicionar, editar e excluir mapeamentos de BSSID para associar a setores e andares.
-  * **Importação de Dados**: Importa configurações de unidades e mapeamentos BSSID de arquivos JSON ou Excel.
-  * **Exportação de Dados**: Exporta configurações de unidades e mapeamentos BSSID para arquivos JSON ou Excel.
-* **Relatórios e Análises**:
-  * Filtros por nome do dispositivo, unidade e setor para gerar relatórios específicos.
-  * Gráfico de pizza com a visão geral do status (Online, Offline, Em Manutenção).
-  * Relatório de Conformidade (baseado no `complianceStatus` dos dispositivos).
-  * Relatório de Dispositivos por Modelo.
-  * Relatórios agrupados por Unidade e Setor, mostrando o total de dispositivos, online, offline e em manutenção, com capacidade de ordenação.
-* **Alertas**: Lista todos os alertas de dispositivos offline ou com bateria baixa.
-* **Dispositivos em Manutenção**: Uma aba dedicada para listar apenas os dispositivos que estão atualmente em status de manutenção.
+## 🔧 Pré-requisitos
 
-## ⚙️ Tecnologias Utilizadas
+- [Node.js](https://nodejs.org/) (versão 16 ou superior)
+- [MongoDB](https://www.mongodb.com/) instalado e rodando
+- [Flutter SDK](https://flutter.dev/docs/get-started/install) configurado para desktop
 
-Este projeto foi desenvolvido com:
+## 📋 Instalação
 
-* **Flutter**: Framework de UI para construção de aplicações multi-plataforma.
-* **Dart**: Linguagem de programação utilizada pelo Flutter.
-* **HTTP**: Para comunicação com o backend (API de gerenciamento de dispositivos).
-* **fl\_chart**: Biblioteca para criação de gráficos interativos.
-* **file\_picker**: Para seleção de arquivos para importação de dados.
-* **excel**: Para leitura e escrita de arquivos Excel (XLSX).
-* **path\_provider**: Para acesso a diretórios do sistema de arquivos.
-* **process**: Para interagir com processos do sistema (como abrir pasta em Windows).
-* **universal\_platform**: Para detecção da plataforma.
-* **shared\_preferences**: Para persistência de dados simples no cliente (não diretamente visível nos trechos fornecidos, mas comum em apps Flutter).
+### 1. Configurar o Backend
 
-## 🚀 Como Rodar o Projeto
+```bash
+# Navegar para a pasta do servidor
+cd servidor-mdm
 
-### Pré-requisitos
+# Criar arquivo .env com seu token
+echo "AUTH_TOKEN=seu_token_aqui" > .env
 
-* [Flutter SDK](https://flutter.dev/docs/get-started/install) (versão `3.7.2` ou superior é compatível com o ambiente de desenvolvimento)
-* Um editor de código como [VS Code](https://code.visualstudio.com/) ou Android Studio.
-* Conexão com um servidor de backend que forneça as APIs de gerenciamento de dispositivos (a aplicação espera um endpoint em `http://192.168.0.183:3000` por padrão).
+# Instalar dependências
+npm install
 
-### Configuração do Ambiente de Desenvolvimento
+# Iniciar o servidor
+node server.js
+```
 
-1. **Clone o repositório:**
+### 2. Configurar o Frontend
 
-    ```bash
-    git clone https://github.com/alexandrecalmonjr/painel_windowns_mobile.git
-    cd painel_windowns_mobile
-    ```
+```bash
+# Navegar para a pasta do painel
+cd painel_windowns
 
-2. **Instale as dependências do Flutter:**
+# Instalar dependências Flutter
+flutter pub get
+```
 
-    ```bash
-    flutter pub get
-    ```
+Edite o arquivo `lib/dashboard_screen.dart` e configure as variáveis de conexão:
 
-3. **Configuração do Servidor:**
-    A aplicação se conecta a um servidor backend. Por padrão, ele tenta se conectar a `http://192.168.0.183:3000` com um token `seu_token_aqui`.
-    Você pode configurar o IP, a Porta e o Token de autenticação do servidor na aba `Configurações` dentro do próprio aplicativo, na seção "Configurações do Sistema".
+```dart
+String serverIp = '192.168.0.183';     // IP do servidor
+String serverPort = '3000';
+String token = 'seu_token_aqui';        // Mesmo token do backend
+```
 
-4. **Execute o aplicativo:**
+```bash
+# Executar a aplicação
+flutter run -d windows  # ou macos, linux
+```
 
-    ```bash
-    flutter run
-    ```
+## 🖥️ Como Usar
 
-    Ou abra o projeto no seu IDE (VS Code ou Android Studio) e use a opção "Run".
+### Visualizar Dispositivos
+1. Acesse a aba **"Dispositivos"** no menu lateral
+2. Use o campo de busca para filtrar em tempo real
+3. Navegue entre páginas com os botões "Anterior/Próxima"
 
-### Estrutura do Projeto (Arquivos Relevantes)
+### Enviar Comandos
+1. Encontre o dispositivo desejado na lista
+2. Clique no ícone de três pontos na coluna "Ações"
+3. Selecione a ação desejada
+4. Preencha as informações solicitadas (se necessário)
+5. Confirme a operação
 
-* `lib/main.dart`: Ponto de entrada da aplicação, onde o dashboard principal e a lógica de comunicação com a API estão definidos.
-* `lib/device_detail_screen.dart`: Tela de detalhes de um dispositivo específico, mostrando informações e históricos.
-* `pubspec.yaml`: Gerenciamento de dependências do projeto.
-* `analysis_options.yaml`: Configurações do analisador Dart e regras de linting.
-* `aplicação/data/flutter_assets/`: Contém os assets da aplicação, como fontes e ícones.
-* `windows/`: Contém os arquivos de configuração e código C++ para a versão Windows da aplicação.
+### Analisar Relatórios
+1. Vá para a aba **"Relatórios"**
+2. Passe o mouse sobre os gráficos para ver detalhes
+3. Clique nas fatias do gráfico para filtrar dispositivos por status
+4. Clique novamente para remover o filtro
+
+### Gerenciar Localizações
+1. Acesse a aba **"Unidades"**
+2. Visualize faixas de IP e mapeamentos BSSID
+3. Use os botões para Adicionar, Importar ou Exportar configurações
+
+### Alertas Automáticos
+- O sistema monitora automaticamente e exibe pop-ups para:
+  - Dispositivos que ficaram offline
+  - Bateria baixa
+  - Mudanças de localização
+
+## 📊 API Endpoints
+
+### Autenticação
+Todas as requisições requerem o header:
+```
+Authorization: Bearer {seu_token}
+```
+
+### Endpoints Principais
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/api/devices` | Lista todos os dispositivos |
+| POST | `/api/executeCommand` | Executa comando em dispositivo |
+| GET | `/api/units` | Lista unidades cadastradas |
+| GET | `/api/bssid-mappings` | Lista mapeamentos BSSID |
+
+### Exemplo de Comando
+```json
+POST /api/executeCommand
+{
+  "serial_number": "ABC123456",
+  "command": "lock_device",
+  "parameters": {
+    "reason": "Manutenção programada"
+  }
+}
+```
+
+## 🔧 Componentes Principais
+
+### Backend (`server.js`)
+- API REST completa
+- Conexão com MongoDB
+- Sistema de logs automático
+- Autenticação por token
+
+### Frontend Flutter
+
+#### `dashboard_screen.dart`
+- Gerenciamento central do estado
+- Controle de atualizações automáticas
+- Sistema de alertas em tempo real
+
+#### `device_service.dart`
+- Camada de comunicação com API
+- Tratamento de erros de rede
+- Serialização de dados
+
+#### Widgets Principais
+- `managed_devices_card.dart`: Tabela de dispositivos
+- `command_controls.dart`: Menu de ações
+- `reports_card.dart`: Gráficos interativos
+
+## 🔍 Solução de Problemas
+
+### Servidor não conecta
+- Verifique se o MongoDB está rodando
+- Confirme o token no arquivo `.env`
+- Verifique se a porta 3000 está disponível
+
+### Painel não carrega dispositivos
+- Confirme o IP do servidor no código Flutter
+- Verifique se o token está correto
+- Teste a conectividade de rede
+
+### Alertas não aparecem
+- Verifique se a atualização automática está ativa
+- Confirme se há mudanças de status nos dispositivos
+
+## 📝 Logs
+
+Os logs do sistema são gerados automaticamente na pasta `/logs` do servidor e incluem:
+- Requisições da API
+- Comandos executados
+- Erros de sistema
+- Conexões de dispositivos
 
 ## 🤝 Contribuição
 
-Este projeto está aberto a contribuições\! Se você deseja contribuir, por favor, siga os seguintes passos:
+1. Faça um fork do projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
 
-1. Faça um fork do repositório.
-2. Crie uma nova branch (`git checkout -b feature/sua-feature`).
-3. Faça suas alterações e commit-as (`git commit -am 'Adiciona nova feature'`).
-4. Envie para a branch (`git push origin feature/sua-feature`).
-5. Abra um Pull Request descrevendo suas alterações.
+## 📞 Suporte
 
-## 📄 Licença
+Para dúvidas ou problemas:
+1. Consulte os logs do sistema
+2. Verifique a documentação da API
+3. Teste a conectividade entre frontend e backend
 
-Este projeto está licenciado sob a licença **MIT License**. Consulte o arquivo `LICENSE` para mais detalhes.
+---
 
-## ✉️ Contato
-
-Para dúvidas, sugestões ou suporte, você pode entrar em contato com:
-
-* **Alexandre Calmon**
-* E-mail: [alexandrecalmonjunior@gmail.com] 
-* GitHub: [alexandrecalmonjr](https://www.google.com/search?q=https://github.com/alexandrecalmonjr)
-
------
+**Desenvolvido com ❤️ usando Node.js e Flutter**
