@@ -5,6 +5,7 @@ import 'package:elegant_notification/elegant_notification.dart';
 import 'package:elegant_notification/resources/arrays.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:painel_windowns/device_detail_screen.dart';
 import 'package:painel_windowns/models/bssid_mapping.dart';
 import 'package:painel_windowns/models/device.dart';
 import 'package:painel_windowns/models/unit.dart';
@@ -22,7 +23,6 @@ import 'package:painel_windowns/widgets/tabs/settings_tab.dart';
 import 'package:painel_windowns/widgets/tabs/units_tab.dart';
 import 'package:painel_windowns/widgets/tabs/users_tab.dart';
 
-
 class MDMDashboard extends StatefulWidget {
   const MDMDashboard({super.key});
 
@@ -32,7 +32,6 @@ class MDMDashboard extends StatefulWidget {
 
 class _MDMDashboardState extends State<MDMDashboard> {
   int selectedIndex = 0;
-  
   bool _isSidebarVisible = true;
   List<Device> _previousDevices = [];
 
@@ -185,31 +184,56 @@ class _MDMDashboardState extends State<MDMDashboard> {
       final oldDevice = oldDevicesMap[newDevice.serialNumber ?? ''];
       if (oldDevice == null) continue;
 
+      // Alerta de Status (Online/Offline)
       final oldOnline = isDeviceOnline(parseLastSeen(oldDevice.lastSeen));
       final newOnline = isDeviceOnline(parseLastSeen(newDevice.lastSeen));
       if (oldOnline != newOnline) {
+        final lastSeenTime = parseLastSeen(newDevice.lastSeen);
         _showRealTimeAlert(
-          title: 'Mudança de Status',
-          description: '${newDevice.deviceName} ficou ${newOnline ? "Online" : "Offline"}.',
-          type: NotificationType.info,
+          title: 'Mudança de Status: ${newDevice.deviceName}',
+          description: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('O dispositivo ficou ${newOnline ? "Online" : "Offline"}.'),
+              if (!newOnline && lastSeenTime != null)
+                Text('Última vez visto: ${formatDateTime(lastSeenTime)}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            ],
+          ),
+          icon: newOnline ? Icons.wifi : Icons.wifi_off,
+          color: newOnline ? Colors.blueAccent : Colors.orange,
+          device: newDevice,
         );
       }
 
+      // Alerta de Bateria Baixa
       final oldBattery = oldDevice.battery ?? 100;
       final newBattery = newDevice.battery ?? 100;
       if (newBattery < 20 && oldBattery >= 20) {
         _showRealTimeAlert(
-          title: 'Bateria Baixa',
-          description: 'A bateria de ${newDevice.deviceName} está em ${newBattery.toInt()}%.',
-          type: NotificationType.error,
+          title: 'Bateria Baixa: ${newDevice.deviceName}',
+          description: Text('O nível da bateria atingiu ${newBattery.toInt()}%.'),
+          icon: Icons.battery_alert,
+          color: Colors.red,
+          device: newDevice,
         );
       }
 
-      if (newDevice.sector != null && (oldDevice.sector != newDevice.sector || oldDevice.floor != newDevice.floor)) {
+      // Alerta de Mudança de Localização
+      final oldLocation = '${oldDevice.sector ?? "N/A"} / ${oldDevice.floor ?? "N/A"}';
+      final newLocation = '${newDevice.sector ?? "N/A"} / ${newDevice.floor ?? "N/A"}';
+      if (newDevice.sector != null && oldLocation != newLocation) {
          _showRealTimeAlert(
-          title: 'Mudança de Localização',
-          description: '${newDevice.deviceName} foi movido para ${newDevice.sector} - ${newDevice.floor}.',
-          type: NotificationType.info, 
+          title: 'Mudança de Localização: ${newDevice.deviceName}',
+          description: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('De: $oldLocation', style: const TextStyle(fontSize: 12)),
+              Text('Para: $newLocation', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          icon: Icons.location_on,
+          color: Colors.purple,
+          device: newDevice,
         );
       }
     }
@@ -217,45 +241,38 @@ class _MDMDashboardState extends State<MDMDashboard> {
 
   void _showRealTimeAlert({
     required String title, 
-    required String description, 
-    required NotificationType type
+    required Widget description, 
+    required IconData icon,
+    required Color color,
+    Device? device,
   }) {
     if (!mounted) return;
     
-    switch(type) {
-      case NotificationType.info:
-        ElegantNotification.info(
-          title: Text(title),
-          description: Text(description),
-          animation: AnimationType.fromTop,
-          toastDuration: const Duration(seconds: 5),
-        ).show(context);
-        break;
-      case NotificationType.error:
-         ElegantNotification.error(
-          title: Text(title),
-          description: Text(description),
-          animation: AnimationType.fromTop,
-          toastDuration: const Duration(seconds: 5),
-        ).show(context);
-        break;
-      case NotificationType.success:
-         ElegantNotification.success(
-          title: Text(title),
-          description: Text(description),
-          animation: AnimationType.fromTop,
-          toastDuration: const Duration(seconds: 5),
-        ).show(context);
-        break;
-      default: 
-        ElegantNotification(
-          title: Text(title),
-          description: Text(description),
-          icon: const Icon(Icons.info, color: Colors.blue),
-          progressIndicatorColor: Colors.blue,
-        ).show(context);
-        break;
-    }
+    ElegantNotification(
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      description: description,
+      icon: Icon(icon, color: color),
+      progressIndicatorColor: color,
+      animation: AnimationType.fromTop,
+      displayCloseButton: true,
+      autoDismiss: true,
+      toastDuration: const Duration(seconds: 8),
+      position: Alignment.topCenter,
+      action: device != null 
+        ? TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => DeviceDetailScreen(device: device)),
+              );
+            },
+            child: const Text(
+              "VER DETALHES", 
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)
+            ),
+          )
+        : null,
+    ).show(context);
   }
 
   void _onSettingsChanged(String newIp, String newPort, String newToken) {
