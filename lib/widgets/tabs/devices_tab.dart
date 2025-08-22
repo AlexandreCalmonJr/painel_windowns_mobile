@@ -28,7 +28,7 @@ class DevicesTab extends StatefulWidget {
     required this.currentPage,
     required this.totalPages,
     required this.onPageChange,
-    required this.onSearch,
+    required this.onSearch, required bool isReadOnly,
   });
 
   @override

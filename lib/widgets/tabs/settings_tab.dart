@@ -12,7 +12,7 @@ class SettingsTab extends StatelessWidget {
     required this.ipController,
     required this.portController,
     required this.tokenController,
-    required this.onSettingsChanged,
+    required this.onSettingsChanged, required bool isReadOnly,
   });
 
   @override

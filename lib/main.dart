@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:painel_windowns/dashboard_screen.dart';
+import 'package:painel_windowns/login_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -11,12 +11,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Controle MDM',
+      title: 'MDM Control Panel',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         scaffoldBackgroundColor: Colors.grey[50],
+        useMaterial3: true,
       ),
-      home: const MDMDashboard(),
+      home: const LoginScreen(),
       debugShowCheckedModeBanner: false,
     );
   }
