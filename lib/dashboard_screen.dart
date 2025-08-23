@@ -637,7 +637,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
     final currentUser = _authService.currentUser;
     final role = currentUser?['role'] ?? 'user';
     final isAdmin = role == 'admin';
-    final onDataRefresh = () => _loadDevices(isInitialLoad: true);
+    onDataRefresh() => _loadDevices(isInitialLoad: true);
     final token = _authService.currentToken ?? '';
 
     if (!isAdmin && [2, 3, 4, 5, 6, 8, 9, 10].contains(selectedIndex)) {
@@ -657,11 +657,12 @@ class _MDMDashboardState extends State<MDMDashboard> {
     }
 
     switch (selectedIndex) {
-      case 0:
-        return DashboardTab(
-          devices: _allFetchedDevices,
-          errorMessage: errorMessage,
-        );
+      case 0: // DashboardTab
+  return DashboardTab(
+    devices: _allFetchedDevices, 
+    errorMessage: errorMessage,
+    currentUser: currentUser, // Adicione esta linha
+  );
       case 1: // DevicesTab
         return DevicesTab(
           devices: _displayedDevices,

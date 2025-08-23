@@ -4,15 +4,17 @@ import 'package:painel_windowns/utils/helpers.dart';
 import 'package:painel_windowns/widgets/managed_devices_card.dart';
 import 'package:painel_windowns/widgets/stat_card.dart';
 
-
 class DashboardTab extends StatefulWidget {
   final List<Device> devices;
   final String? errorMessage;
+  // NOVO: Recebe os dados do utilizador para aplicar a filtragem
+  final Map<String, dynamic>? currentUser;
 
   const DashboardTab({
     super.key,
     required this.devices,
     this.errorMessage,
+    this.currentUser, // Adicionado ao construtor
   });
 
   @override
@@ -21,50 +23,65 @@ class DashboardTab extends StatefulWidget {
 
 class _DashboardTabState extends State<DashboardTab> {
   String _deviceFilter = 'Todos';
+ 
 
-  Map<String, int> _getDeviceStats() {
-    int online = 0;
-    int offline = 0;
-    int maintenance = 0;
+  @override
+  void initState() {
+    super.initState();
+    
+  }
 
-    for (final device in widget.devices) {
-      final inMaintenance = device.maintenanceStatus ?? false;
-      if (inMaintenance) {
-        maintenance++;
+  @override
+  void didUpdateWidget(covariant DashboardTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+  }
+
+Map<String, int> _getDeviceStats() {
+  int online = 0;
+  int offline = 0;
+  int maintenance = 0;
+
+  // Usar diretamente widget.devices (já filtrados pela API)
+  for (final device in widget.devices) {
+    final inMaintenance = device.maintenanceStatus ?? false;
+    if (inMaintenance) {
+      maintenance++;
+    } else {
+      final lastSeenTime = parseLastSeen(device.lastSeen);
+      if (isDeviceOnline(lastSeenTime)) {
+        online++;
       } else {
-        final lastSeenTime = parseLastSeen(device.lastSeen);
-        if (isDeviceOnline(lastSeenTime)) {
-          online++;
-        } else {
-          offline++;
-        }
+        offline++;
       }
     }
-    return {
-      'total': widget.devices.length,
-      'online': online,
-      'offline': offline,
-      'maintenance': maintenance,
-    };
   }
+  
+  return {
+    'total': widget.devices.length, // Agora será 10 em vez de 59
+    'online': online,
+    'offline': offline,
+    'maintenance': maintenance,
+  };
+}
 
-  List<Device> _getFilteredDevices() {
-    return widget.devices.where((device) {
-      final lastSeenTime = parseLastSeen(device.lastSeen);
-      final online = isDeviceOnline(lastSeenTime);
-      final inMaintenance = device.maintenanceStatus ?? false;
-      switch (_deviceFilter) {
-        case 'Online':
-          return online && !inMaintenance;
-        case 'Offline':
-          return !online && !inMaintenance;
-        case 'Manutenção':
-          return inMaintenance;
-        default:
-          return true;
-      }
-    }).toList();
-  }
+List<Device> _getFilteredDevices() {
+  // Usar diretamente widget.devices (já filtrados pela API)
+  return widget.devices.where((device) {
+    final lastSeenTime = parseLastSeen(device.lastSeen);
+    final online = isDeviceOnline(lastSeenTime);
+    final inMaintenance = device.maintenanceStatus ?? false;
+    switch (_deviceFilter) {
+      case 'Online':
+        return online && !inMaintenance;
+      case 'Offline':
+        return !online && !inMaintenance;
+      case 'Manutenção':
+        return inMaintenance;
+      default:
+        return true;
+    }
+  }).toList();
+}
 
   @override
   Widget build(BuildContext context) {
@@ -128,9 +145,8 @@ class _DashboardTabState extends State<DashboardTab> {
           child: ManagedDevicesCard(
             title: 'Dispositivos Gerenciados (${filteredDevices.length})',
             devices: filteredDevices,
-            showActions: false, // No actions on dashboard view
-            // Pass other required parameters if any, like serverIp, token, etc.
-            // These would be needed if actions were enabled.
+            showActions: false, // Sem ações no dashboard
+            currentUser: widget.currentUser, // Passa o utilizador para consistência
           ),
         ),
       ],

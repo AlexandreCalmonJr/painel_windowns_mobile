@@ -25,28 +25,56 @@ class ManagedDevicesCard extends StatelessWidget {
     this.currentUser,
   });
 
-  Future<void> _downloadDevicesCsv(BuildContext context, List<Device> devicesToExport) async {
+  Future<void> _downloadDevicesCsv(
+    BuildContext context,
+    List<Device> devicesToExport,
+  ) async {
     final headers = [
-      'Dispositivo', 'Modelo', 'IMEI', 'Serial', 'Status', 'Última Sincronização',
-      'Bateria', 'Endereço IP', 'Rede', 'Endereço MAC', 'Em Manutenção', 'Chamado',
-      'Unidade', 'Setor', 'Andar',
+      'Dispositivo',
+      'Modelo',
+      'IMEI',
+      'Serial',
+      'Status',
+      'Última Sincronização',
+      'Bateria',
+      'Endereço IP',
+      'Rede',
+      'Endereço MAC',
+      'Em Manutenção',
+      'Chamado',
+      'Unidade',
+      'Setor',
+      'Andar',
     ];
 
-    final rows = devicesToExport.map((device) {
-      final lastSeenTime = parseLastSeen(device.lastSeen);
-      final online = isDeviceOnline(lastSeenTime);
-      final inMaintenance = device.maintenanceStatus ?? false;
-      final status = inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
-      
-      return [
-        device.deviceName, device.deviceModel ?? 'N/A', device.imei ?? 'N/A',
-        device.serialNumber ?? 'N/A', status, formatDateTime(lastSeenTime),
-        device.battery != null ? '${device.battery}%' : 'N/A',
-        device.ipAddress ?? 'N/A', device.network ?? 'N/A', device.macAddress ?? 'N/A',
-        inMaintenance ? 'Sim' : 'Não', device.maintenanceTicket ?? 'N/A',
-        device.unit ?? 'N/A', device.sector ?? 'N/A', device.floor ?? 'N/A',
-      ].map((value) => '"${value.toString().replaceAll('"', '""')}"').join(',');
-    }).toList();
+    final rows =
+        devicesToExport.map((device) {
+          final lastSeenTime = parseLastSeen(device.lastSeen);
+          final online = isDeviceOnline(lastSeenTime);
+          final inMaintenance = device.maintenanceStatus ?? false;
+          final status =
+              inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+
+          return [
+                device.deviceName,
+                device.deviceModel ?? 'N/A',
+                device.imei ?? 'N/A',
+                device.serialNumber ?? 'N/A',
+                status,
+                formatDateTime(lastSeenTime),
+                device.battery != null ? '${device.battery}%' : 'N/A',
+                device.ipAddress ?? 'N/A',
+                device.network ?? 'N/A',
+                device.macAddress ?? 'N/A',
+                inMaintenance ? 'Sim' : 'Não',
+                device.maintenanceTicket ?? 'N/A',
+                device.unit ?? 'N/A',
+                device.sector ?? 'N/A',
+                device.floor ?? 'N/A',
+              ]
+              .map((value) => '"${value.toString().replaceAll('"', '""')}"')
+              .join(',');
+        }).toList();
 
     final csvContent = [headers.join(','), ...rows].join('\n');
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -54,186 +82,148 @@ class ManagedDevicesCard extends StatelessWidget {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final path = '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
+      final path =
+          '${directory.path}${Platform.pathSeparator}dispositivos_$timestamp.csv';
       final file = File(path);
       await file.writeAsString(csvContent);
 
-      scaffoldMessenger.showSnackBar(SnackBar(content: Text('CSV salvo em: $path')));
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('CSV salvo em: $path')),
+      );
     } catch (e) {
-      scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro ao salvar CSV: $e'), backgroundColor: Colors.red));
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Erro ao salvar CSV: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
-// CORREÇÃO FINAL baseada na estrutura real dos dados
+  // CORREÇÃO FINAL baseada na estrutura real dos dados
 
-@override
-Widget build(BuildContext context) {
-  List<Device> filteredDevices = devices;
-  
-  // Verificar se currentUser não é null e extrair dados com segurança
-  if (currentUser != null) {
-    final String? userRole = currentUser!['role']?.toString();
-    final String? userSectorPrefixes = currentUser!['sector']?.toString();
-    
-    // Debug para verificar os valores (remova após testar)
-    print('User Role: $userRole');
-    print('User Sector: $userSectorPrefixes');
-    
-    // Apenas filtrar se o usuário for do tipo 'user' e não tiver setor 'Global'
-    if (userRole == 'user' && 
-        userSectorPrefixes != null && 
-        userSectorPrefixes.isNotEmpty && 
-        userSectorPrefixes != 'Global') {
-      
-      // Processar os prefixos de forma segura
-      final List<String> prefixes = userSectorPrefixes
-          .split(',')
-          .map((String prefix) => prefix.trim().toLowerCase())
-          .where((String prefix) => prefix.isNotEmpty)
-          .toList();
-      
-      print('Prefixes to filter: $prefixes'); // Debug
-      
-      if (prefixes.isNotEmpty) {
-        // Usar um método mais explícito e seguro para filtrar
-        final List<Device> tempFilteredDevices = <Device>[];
-        
-        for (final Device device in devices) {
-          if (device.deviceName != null) {
-            final String deviceName = device.deviceName!.toLowerCase();
-            
-            // Verificar se o nome do dispositivo começa com algum dos prefixos
-            bool matchFound = false;
-            for (final String prefix in prefixes) {
-              if (deviceName.startsWith(prefix)) {
-                matchFound = true;
-                break;
-              }
-            }
-            
-            if (matchFound) {
-              tempFilteredDevices.add(device);
-            }
-          }
-        }
-        
-        filteredDevices = tempFilteredDevices;
-        print('Filtered devices count: ${filteredDevices.length}'); // Debug
-      } else {
-        // Se não há prefixos válidos, usuário não vê nenhum dispositivo
-        filteredDevices = <Device>[];
-      }
-    }
-    // Se é admin ou setor é 'Global', mostra todos os dispositivos (não filtra)
-  }
-
-  return Container(
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.grey.withOpacity(0.2),
-          spreadRadius: 1,
-          blurRadius: 6,
-          offset: const Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title, 
-              style: TextStyle(
-                fontSize: 18, 
-                fontWeight: FontWeight.bold, 
-                color: Colors.grey[800]
-              )
-            ),
-            ElevatedButton.icon(
-              onPressed: () => _downloadDevicesCsv(context, filteredDevices),
-              icon: const Icon(Icons.download, size: 16),
-              label: const Text('Baixar CSV'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                textStyle: const TextStyle(fontSize: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-            ),
-          ],
-        ),
-        const Divider(height: 24),
-        
-        // Adicionar informação de debug (remova depois de testar)
-        if (currentUser != null && currentUser!['role'] == 'user')
-          Container(
-            padding: const EdgeInsets.all(8),
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: Colors.blue[50],
-              border: Border.all(color: Colors.blue[200]!),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              'Filtrado por: ${currentUser!['sector']} | Dispositivos visíveis: ${filteredDevices.length}',
-              style: TextStyle(color: Colors.blue[700], fontSize: 12),
-            ),
+  @override
+  Widget build(BuildContext context) {
+    List<Device> filteredDevices = devices;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-        
-        Expanded(
-          child: SingleChildScrollView(
-            child: Table(
-              border: const TableBorder(
-                horizontalInside: BorderSide(color: Colors.black12, width: 0.5)
-              ),
-              columnWidths: {
-                0: const FlexColumnWidth(2.2),
-                1: const FlexColumnWidth(1.5),
-                2: const FlexColumnWidth(2),
-                3: const FlexColumnWidth(2),
-                4: const FlexColumnWidth(1.2),
-                5: const FlexColumnWidth(2),
-                6: const FlexColumnWidth(1.5),
-                7: const FlexColumnWidth(1.5),
-                if (showActions) 8: const FlexColumnWidth(1),
-              },
-              children: [
-                TableRow(
-                  decoration: BoxDecoration(color: Colors.grey.shade50),
-                  children: [
-                    _buildTableHeader('Dispositivo'),
-                    _buildTableHeader('Modelo'),
-                    _buildTableHeader('Serial'),
-                    _buildTableHeader('IMEI'),
-                    _buildTableHeader('Status'),
-                    _buildTableHeader('Última Sincronização'),
-                    _buildTableHeader('Unidade'),
-                    _buildTableHeader('Setor/Andar'),
-                    if (showActions) _buildTableHeader('Ações'),
-                  ],
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
                 ),
-                ...filteredDevices.map((device) => _buildDeviceTableRow(context, device)),
-              ],
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _downloadDevicesCsv(context, filteredDevices),
+                icon: const Icon(Icons.download, size: 16),
+                label: const Text('Baixar CSV'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  textStyle: const TextStyle(fontSize: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+
+          // Adicionar informação de debug (remova depois de testar)
+          if (currentUser != null && currentUser!['role'] == 'user')
+            Container(
+              padding: const EdgeInsets.all(8),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                border: Border.all(color: Colors.blue[200]!),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Filtrado por: ${currentUser!['sector']} | Dispositivos visíveis: ${filteredDevices.length}',
+                style: TextStyle(color: Colors.blue[700], fontSize: 12),
+              ),
+            ),
+
+          Expanded(
+            child: SingleChildScrollView(
+              child: Table(
+                border: const TableBorder(
+                  horizontalInside: BorderSide(
+                    color: Colors.black12,
+                    width: 0.5,
+                  ),
+                ),
+                columnWidths: {
+                  0: const FlexColumnWidth(2.2),
+                  1: const FlexColumnWidth(1.5),
+                  2: const FlexColumnWidth(2),
+                  3: const FlexColumnWidth(2),
+                  4: const FlexColumnWidth(1.2),
+                  5: const FlexColumnWidth(2),
+                  6: const FlexColumnWidth(1.5),
+                  7: const FlexColumnWidth(1.5),
+                  if (showActions) 8: const FlexColumnWidth(1),
+                },
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(color: Colors.grey.shade50),
+                    children: [
+                      _buildTableHeader('Dispositivo'),
+                      _buildTableHeader('Modelo'),
+                      _buildTableHeader('Serial'),
+                      _buildTableHeader('IMEI'),
+                      _buildTableHeader('Status'),
+                      _buildTableHeader('Última Sincronização'),
+                      _buildTableHeader('Unidade'),
+                      _buildTableHeader('Setor/Andar'),
+                      if (showActions) _buildTableHeader('Ações'),
+                    ],
+                  ),
+                  ...filteredDevices.map(
+                    (device) => _buildDeviceTableRow(context, device),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
 
   Widget _buildTableHeader(String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       child: Text(
         text,
-        style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey[600], fontSize: 12),
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.grey[600],
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -242,8 +232,10 @@ Widget build(BuildContext context) {
     final lastSeenTime = parseLastSeen(device.lastSeen);
     final online = isDeviceOnline(lastSeenTime);
     final inMaintenance = device.maintenanceStatus ?? false;
-    final status = inMaintenance ? 'Manutenção' : (online ? 'Online' : 'Offline');
-    final statusColor = inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
+    final status =
+        inMaintenance ? 'Manutenção' : (online ? 'Online' : 'Offline');
+    final statusColor =
+        inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
 
     return TableRow(
       children: [
@@ -272,16 +264,28 @@ Widget build(BuildContext context) {
     return TableCell(
       verticalAlignment: TableCellVerticalAlignment.middle,
       child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => DeviceDetailScreen(device: device))),
+        onTap:
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DeviceDetailScreen(device: device),
+              ),
+            ),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(device.deviceName ?? 'N/A', style: const TextStyle(fontWeight: FontWeight.w500)),
+              Text(
+                device.deviceName ?? 'N/A',
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
               if (device.battery != null)
-                Text('Bateria: ${device.battery}%', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                Text(
+                  'Bateria: ${device.battery}%',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                ),
             ],
           ),
         ),
@@ -311,7 +315,11 @@ Widget build(BuildContext context) {
         child: Text(
           status,
           textAlign: TextAlign.center,
-          style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500),
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
     );
