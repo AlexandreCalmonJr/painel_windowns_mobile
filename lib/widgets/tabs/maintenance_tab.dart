@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:painel_windowns/models/device.dart';
-import 'package:painel_windowns/widgets/managed_devices_card.dart';
+import 'package:painel_windowns/services/auth_service.dart';
+import 'package:painel_windowns/widgets/managed_devices_card.dart'; 
+
 
 class MaintenanceTab extends StatelessWidget {
   final List<Device> devices;
   final String token;
   final VoidCallback onDeviceUpdate;
   final Map<String, dynamic>? currentUser;
+  final AuthService authService;
 
   const MaintenanceTab({
     super.key,
@@ -14,6 +17,7 @@ class MaintenanceTab extends StatelessWidget {
     required this.token,
     required this.onDeviceUpdate,
     required this.currentUser,
+    required this.authService,
   });
 
   @override
@@ -25,10 +29,11 @@ class MaintenanceTab extends StatelessWidget {
     return ManagedDevicesCard(
       title: 'Dispositivos em Manutenção',
       devices: maintenanceDevices,
+      authService: authService, // 4. Passe o serviço aqui
       showActions: true,
       token: token,
       onDeviceUpdate: onDeviceUpdate,
-      currentUser: currentUser, // Passando o usuário
+      currentUser: currentUser,
     );
   }
 }

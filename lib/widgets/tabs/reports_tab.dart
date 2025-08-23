@@ -1,18 +1,22 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:painel_windowns/models/device.dart';
+import 'package:painel_windowns/services/auth_service.dart';
 import 'package:painel_windowns/utils/helpers.dart';
 import 'package:painel_windowns/widgets/managed_devices_card.dart';
 
+
+
+
 class ReportsTab extends StatefulWidget {
   final List<Device> devices;
-  final String token;
+  final AuthService authService;
   final Map<String, dynamic>? currentUser;
 
   const ReportsTab({
     super.key,
     required this.devices,
-    required this.token,
+    required this.authService,
     required this.currentUser,
   });
 
@@ -904,9 +908,10 @@ class _ReportsTabState extends State<ReportsTab> with TickerProviderStateMixin {
               child: ManagedDevicesCard(
                 title: 'Dispositivos: $_selectedStatusFilter (${_filteredDevices.length})',
                 devices: _filteredDevices,
+                authService: widget.authService, // 4. Passe o serviço aqui
                 showActions: true,
-                token: widget.token,
-                currentUser: widget.currentUser,
+                token: widget.authService.currentToken, // Pode pegar daqui agora
+                currentUser: widget.authService.currentUser, // Pode pegar daqui agora
                 onDeviceUpdate: () {
                   setState(() => _updateFilteredDeviceList());
                 },

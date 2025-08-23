@@ -4,7 +4,8 @@ import 'package:painel_windowns/services/auth_service.dart';
 import 'package:painel_windowns/services/server_config_service.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final AuthService authService;
+  const LoginScreen({super.key, required this.authService});
 
   @override
   _LoginScreenState createState() => _LoginScreenState();
@@ -19,7 +20,6 @@ class _LoginScreenState extends State<LoginScreen>
   late TextEditingController _portController;
 
   // Serviços e estado da UI
-  final AuthService _authService = AuthService();
   bool _isLoading = false;
   bool _obscurePassword = true;
   late TabController _tabController;
@@ -89,10 +89,10 @@ class _LoginScreenState extends State<LoginScreen>
 
     setState(() => _isLoading = true);
     try {
-      final result = await _authService.login(
-        _usernameController.text,
-        _passwordController.text,
-      );
+       final result = await widget.authService.login(
+      _usernameController.text,
+      _passwordController.text,
+    );
 
       if (mounted) {
         if (result['success']) {
@@ -101,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen>
           await Future.delayed(const Duration(milliseconds: 1000));
           Navigator.of(context).pushReplacement(
             PageRouteBuilder(
-              pageBuilder: (context, animation, _) => const MDMDashboard(),
+              pageBuilder: (context, animation, _) => MDMDashboard(authService: widget.authService),
               transitionDuration: const Duration(milliseconds: 500),
               transitionsBuilder: (context, animation, _, child) {
                 return FadeTransition(

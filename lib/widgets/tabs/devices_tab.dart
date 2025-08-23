@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:painel_windowns/models/device.dart';
+import 'package:painel_windowns/services/auth_service.dart';
 import 'package:painel_windowns/widgets/managed_devices_card.dart';
+
 
 class DevicesTab extends StatefulWidget {
   final List<Device> devices;
@@ -10,6 +12,7 @@ class DevicesTab extends StatefulWidget {
   final VoidCallback onDeviceUpdate;
   final bool isReadOnly;
   final Map<String, dynamic>? currentUser;
+  final AuthService authService;
 
   final int currentPage;
   final int totalPages;
@@ -17,6 +20,7 @@ class DevicesTab extends StatefulWidget {
   final Function(String) onSearch;
 
   const DevicesTab({
+    required this.authService,
     super.key,
     required this.devices,
     required this.token,
@@ -87,10 +91,12 @@ class _DevicesTabState extends State<DevicesTab> {
           child: ManagedDevicesCard(
             title: 'Todos os Dispositivos',
             devices: widget.devices,
+            // 4. Esta linha agora funcionará corretamente
+            authService: widget.authService, 
             showActions: !widget.isReadOnly,
             token: widget.token,
             onDeviceUpdate: widget.onDeviceUpdate,
-            currentUser: widget.currentUser, // Passando o usuário
+            currentUser: widget.currentUser,
           ),
         ),
         Padding(

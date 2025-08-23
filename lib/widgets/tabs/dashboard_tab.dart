@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:painel_windowns/models/device.dart';
+import 'package:painel_windowns/services/auth_service.dart';
 import 'package:painel_windowns/utils/helpers.dart';
 import 'package:painel_windowns/widgets/managed_devices_card.dart';
 import 'package:painel_windowns/widgets/stat_card.dart';
@@ -9,8 +10,11 @@ class DashboardTab extends StatefulWidget {
   final String? errorMessage;
   // NOVO: Recebe os dados do utilizador para aplicar a filtragem
   final Map<String, dynamic>? currentUser;
+  final AuthService authService; // 2. Adicione para receber o serviço
+
 
   const DashboardTab({
+    required this.authService,
     super.key,
     required this.devices,
     this.errorMessage,
@@ -145,8 +149,9 @@ List<Device> _getFilteredDevices() {
           child: ManagedDevicesCard(
             title: 'Dispositivos Gerenciados (${filteredDevices.length})',
             devices: filteredDevices,
-            showActions: false, // Sem ações no dashboard
-            currentUser: widget.currentUser, // Passa o utilizador para consistência
+            authService: widget.authService, // 4. Passe o serviço aqui
+            showActions: false, 
+            currentUser: widget.currentUser,
           ),
         ),
       ],

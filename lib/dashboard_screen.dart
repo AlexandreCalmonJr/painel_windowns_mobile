@@ -27,7 +27,8 @@ import 'package:painel_windowns/widgets/tabs/units_tab.dart';
 import 'package:painel_windowns/widgets/tabs/users_tab.dart';
 
 class MDMDashboard extends StatefulWidget {
-  const MDMDashboard({super.key});
+  final AuthService authService;
+  const MDMDashboard({super.key, required this.authService});
 
   @override
   _MDMDashboardState createState() => _MDMDashboardState();
@@ -50,7 +51,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
   bool isLoading = false;
   String? errorMessage;
   final DeviceService _deviceService = DeviceService();
-  final AuthService _authService = AuthService();
+
   Timer? _refreshTimer;
 
   String serverIp = '';
@@ -59,43 +60,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
   @override
   void initState() {
     super.initState();
-    _initializeAuth();
-  }
-
-  Future<void> _initializeAuth() async {
-    final config = ServerConfigService.instance.loadConfig();
-    setState(() {
-      serverIp = config['ip']!;
-      serverPort = config['port']!;
-    });
-
-    await _authService.initializeFromStorage();
-
-    if (!_authService.isLoggedIn) {
-      _redirectToLogin();
-      return;
-    }
-
-    final isValid = await _authService.verifyToken();
-    if (!isValid) {
-      _redirectToLogin();
-      return;
-    }
-
     _initializeData();
-  }
-
-  void _redirectToLogin() {
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
-    }
-  }
-
-  Future<void> _logout() async {
-    await _authService.logout();
-    _redirectToLogin();
   }
 
   Future<void> _initializeData() async {
@@ -124,7 +89,8 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Future<void> _loadUnits() async {
-    final token = _authService.currentToken;
+    // Use widget.authService
+    final token = widget.authService.currentToken;
     if (token == null) return;
     try {
       final config = ServerConfigService.instance.loadConfig();
@@ -136,30 +102,38 @@ class _MDMDashboardState extends State<MDMDashboard> {
         // --- INÍCIO DA CORREÇÃO ---
         // 1. Decodifica a resposta completa, que é um Mapa (Objeto JSON).
         final Map<String, dynamic> data = jsonDecode(response.body);
-        
+
         // 2. Verifica se a resposta foi bem-sucedida e se contém a chave 'units'.
         if (data['success'] == true && data['units'] is List) {
           // 3. Pega a lista de dentro da chave 'units'.
           final List<dynamic> unitsList = data['units'];
-          
+
           // 4. Atualiza o estado com a lista correta.
-          setState(() => units = unitsList.map((json) => Unit.fromJson(json)).toList());
+          setState(
+            () => units = unitsList.map((json) => Unit.fromJson(json)).toList(),
+          );
         } else {
           // Lança um erro se o formato da resposta for inesperado.
-          throw Exception(data['message'] ?? 'Formato de resposta inválido ao carregar unidades');
+          throw Exception(
+            data['message'] ??
+                'Formato de resposta inválido ao carregar unidades',
+          );
         }
         // --- FIM DA CORREÇÃO ---
       }
     } catch (e) {
-      if (mounted) _showSnackbar('Erro ao carregar unidades: $e', isError: true);
+      if (mounted)
+        _showSnackbar('Erro ao carregar unidades: $e', isError: true);
     }
   }
 
   Future<void> _loadBssidMappings() async {
-    final token = _authService.currentToken;
-    if (token == null) return;
+    final token = widget.authService.currentToken;
+    if (token == null)
+      return; // Esta linha já garante que o token não é nulo abaixo
     try {
-      final mappings = await _deviceService.fetchBssidMappings(token);
+      // 👇 Adicione o '!' depois de 'token' para corrigir o erro
+      final mappings = await _deviceService.fetchBssidMappings(token!);
       if (mounted) {
         setState(() => bssidMappings = mappings);
       }
@@ -171,7 +145,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Future<void> _loadDevices({bool isInitialLoad = false}) async {
-    final token = _authService.currentToken;
+    final token = widget.authService.currentToken;
     if (!mounted || token == null) return;
 
     setState(() => isLoading = true);
@@ -191,6 +165,20 @@ class _MDMDashboardState extends State<MDMDashboard> {
       if (mounted) setState(() => errorMessage = e.toString());
     } finally {
       if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _logout() async {
+    // 👇 ETAPA 6: Use o serviço que vem do widget
+    await widget.authService.logout();
+
+    // Navega para a LoginScreen, passando a instância (agora vazia) do serviço
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => LoginScreen(authService: widget.authService),
+        ),
+      );
     }
   }
 
@@ -338,7 +326,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => DeviceDetailScreen(device: device),
+              builder:
+                  (context) => DeviceDetailScreen(
+                    device: device,
+                    authService: widget.authService,
+                  ),
             ),
           );
         }
@@ -371,7 +363,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Widget _buildSidebar() {
-    final currentUser = _authService.currentUser;
+    final currentUser = widget.authService.currentUser;
     final role = currentUser?['role'] ?? 'user';
     final isAdmin = role == 'admin';
 
@@ -489,7 +481,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Widget _buildAppBar() {
-    final currentUser = _authService.currentUser;
+    final currentUser = widget.authService.currentUser;
     final username = currentUser?['username'] ?? 'Usuário';
     final role = currentUser?['role'] ?? 'user';
     final sector = currentUser?['sector'] ?? 'N/A';
@@ -634,11 +626,11 @@ class _MDMDashboardState extends State<MDMDashboard> {
   }
 
   Widget _buildTabContent() {
-    final currentUser = _authService.currentUser;
+    final currentUser = widget.authService.currentUser;
     final role = currentUser?['role'] ?? 'user';
     final isAdmin = role == 'admin';
     onDataRefresh() => _loadDevices(isInitialLoad: true);
-    final token = _authService.currentToken ?? '';
+    final token = widget.authService.currentToken ?? '';
 
     if (!isAdmin && [2, 3, 4, 5, 6, 8, 9, 10].contains(selectedIndex)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -653,16 +645,19 @@ class _MDMDashboardState extends State<MDMDashboard> {
       return DashboardTab(
         devices: _allFetchedDevices,
         errorMessage: errorMessage,
+        authService: widget.authService, 
       );
     }
 
     switch (selectedIndex) {
       case 0: // DashboardTab
-  return DashboardTab(
-    devices: _allFetchedDevices, 
-    errorMessage: errorMessage,
-    currentUser: currentUser, // Adicione esta linha
-  );
+        return DashboardTab(
+          devices: _allFetchedDevices,
+          errorMessage: errorMessage,
+          currentUser: currentUser,
+          authService: widget.authService, 
+           // Adicione esta linha
+        );
       case 1: // DevicesTab
         return DevicesTab(
           devices: _displayedDevices,
@@ -674,19 +669,21 @@ class _MDMDashboardState extends State<MDMDashboard> {
           onPageChange: _changePage,
           onSearch: _performSearch,
           // NOVO: Passa os dados do usuário atual
-          currentUser: _authService.currentUser,
+          currentUser: widget.authService.currentUser,
+          authService: widget.authService, 
         );
       case 2:
         return ServerTab(serverIp: serverIp, serverPort: serverPort);
       case 3:
         return const SecurityTab();
-      case 4: return UsersTab(authService: _authService);
+      case 4:
+        return UsersTab(authService: widget.authService);
       case 5: // ReportsTab
         return ReportsTab(
           devices: _allFetchedDevices,
           // Passando os parâmetros necessários
-          token: token,
           currentUser: currentUser,
+          authService: widget.authService, 
         );
       case 6:
         return AlertsTab(devices: _allFetchedDevices);
@@ -707,7 +704,8 @@ class _MDMDashboardState extends State<MDMDashboard> {
           token: token,
           onDeviceUpdate: onDataRefresh,
           // NOVO: Passa os dados do usuário atual
-          currentUser: _authService.currentUser,
+          currentUser: widget.authService.currentUser,
+          authService: widget.authService, 
         );
       case 10:
         return TestTab(
@@ -731,6 +729,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
         return DashboardTab(
           devices: _allFetchedDevices,
           errorMessage: errorMessage,
+          authService: widget.authService, 
         );
     }
   }
@@ -882,7 +881,7 @@ class _MDMDashboardState extends State<MDMDashboard> {
                                   return;
                                 }
                                 setState(() => isLoading = true);
-                                final result = await _authService
+                                final result = await widget.authService
                                     .changePassword(
                                       currentPasswordController.text,
                                       newPasswordController.text,

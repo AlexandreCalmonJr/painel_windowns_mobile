@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:painel_windowns/device_detail_screen.dart';
 import 'package:painel_windowns/models/device.dart';
+import 'package:painel_windowns/services/auth_service.dart';
 import 'package:painel_windowns/utils/helpers.dart';
 import 'package:painel_windowns/widgets/command_controls.dart';
 import 'package:path_provider/path_provider.dart';
@@ -14,8 +15,11 @@ class ManagedDevicesCard extends StatelessWidget {
   final String? token;
   final VoidCallback? onDeviceUpdate;
   final Map<String, dynamic>? currentUser;
+  final AuthService authService;
+
 
   const ManagedDevicesCard({
+    required this.authService,
     super.key,
     required this.title,
     required this.devices,
@@ -268,7 +272,10 @@ class ManagedDevicesCard extends StatelessWidget {
             () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => DeviceDetailScreen(device: device),
+                builder: (context) => DeviceDetailScreen(
+                  device: device,
+                  authService: authService, // Pass the required authService parameter
+                ),
               ),
             ),
         child: Padding(

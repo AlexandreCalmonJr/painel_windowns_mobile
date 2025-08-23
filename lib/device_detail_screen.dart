@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:painel_windowns/models/device.dart';
 import 'package:painel_windowns/services/auth_service.dart';
@@ -6,8 +8,14 @@ import 'package:painel_windowns/utils/helpers.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
   final Device device;
+  // 👇 ETAPA 1: Adicione para receber o serviço
+  final AuthService authService; 
 
-  const DeviceDetailScreen({Key? key, required this.device}) : super(key: key);
+  const DeviceDetailScreen({
+    Key? key, 
+    required this.device,
+    required this.authService, // 👇 ETAPA 2: Adicione ao construtor
+  }) : super(key: key);
 
   @override
   State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
@@ -15,8 +23,8 @@ class DeviceDetailScreen extends StatefulWidget {
 
 class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   final DeviceService _deviceService = DeviceService();
-  final AuthService _authService = AuthService();
   late Future<List<Map<String, dynamic>>> _locationHistoryFuture;
+  bool _isLoadingHistory = false;
 
   @override
   void initState() {
@@ -24,12 +32,53 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     _locationHistoryFuture = _fetchLocationHistory();
   }
 
-  Future<List<Map<String, dynamic>>> _fetchLocationHistory() {
-    final token = _authService.currentToken;
-    if (token == null || widget.device.serialNumber == null) {
-      return Future.value([]); // Retorna futuro com lista vazia se não for possível buscar
+  Future<List<Map<String, dynamic>>> _fetchLocationHistory() async {
+  setState(() {
+    _isLoadingHistory = true;
+  });
+
+  try {
+    final token = widget.authService.currentToken; 
+    
+    if (token == null || token.isEmpty) {
+      print('DEBUG: Token não disponível'); // LOG 1
+      return [];
     }
-    return _deviceService.fetchLocationHistory(token, widget.device.serialNumber!);
+
+    String? serialNumber = widget.device.serialNumber;
+
+    if (serialNumber == null || serialNumber.isEmpty) {
+      print('DEBUG: Serial number não encontrado no dispositivo'); // LOG 2
+      return [];
+    }
+
+    // --- INÍCIO DA DEPURAÇÃO ---
+    print('DEBUG: Buscando histórico para o serial: "$serialNumber"'); // LOG 3
+    
+    // Vamos chamar o serviço e ver a resposta
+    final history = await _deviceService.fetchLocationHistory(token, serialNumber);
+    
+    print('DEBUG: Histórico recebido do serviço. Quantidade de itens: ${history.length}'); // LOG 4
+    if (history.isNotEmpty) {
+      print('DEBUG: Primeiro item do histórico: ${jsonEncode(history.first)}'); // LOG 5
+    }
+    // --- FIM DA DEPURAÇÃO ---
+    
+    return history;
+  } catch (e) {
+    print('DEBUG: ERRO FATAL ao buscar histórico de localização: $e'); // LOG 6
+    return [];
+  } finally {
+    setState(() {
+      _isLoadingHistory = false;
+    });
+  }
+}
+
+  void _refreshLocationHistory() {
+    setState(() {
+      _locationHistoryFuture = _fetchLocationHistory();
+    });
   }
 
   @override
@@ -38,26 +87,31 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      body: CustomScrollView(
-        slivers: [
-          _buildHeader(context),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  _buildQuickStats(),
-                  const SizedBox(height: 16),
-                  _buildDetailedInfoCard(context),
-                  const SizedBox(height: 16),
-                  _buildLocationHistoryCard(context),
-                  const SizedBox(height: 16),
-                  _buildMaintenanceHistoryCard(context, maintenanceHistory),
-                ],
+      body: RefreshIndicator(
+        onRefresh: () async {
+          _refreshLocationHistory();
+        },
+        child: CustomScrollView(
+          slivers: [
+            _buildHeader(context),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    _buildQuickStats(),
+                    const SizedBox(height: 16),
+                    _buildDetailedInfoCard(context),
+                    const SizedBox(height: 16),
+                    _buildLocationHistoryCard(context),
+                    const SizedBox(height: 16),
+                    _buildMaintenanceHistoryCard(context, maintenanceHistory),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -143,35 +197,94 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       title: 'Histórico de Localização',
       icon: Icons.location_history,
       iconColor: Colors.purple.shade700,
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _locationHistoryFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
-          }
-          if (snapshot.hasError) {
-            return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text('Erro: ${snapshot.error}')));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 24.0), child: Text('Nenhum histórico de localização encontrado.')));
-          }
-          
-          final history = snapshot.data!;
-          return Column(
-            children: List.generate(history.length, (index) {
-              final entry = history[index];
-              final location = "${entry['sector']} - ${entry['floor']}";
-              return _buildTimelineTile(
-                icon: Icons.location_on_outlined,
-                title: location,
-                subtitle: formatDateTime(parseLastSeen(entry['timestamp'])),
-                color: Colors.purple.shade700,
-                isFirst: index == 0,
-                isLast: index == history.length - 1,
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Últimas localizações', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              IconButton(
+                icon: Icon(Icons.refresh, color: Colors.purple.shade700, size: 20),
+                onPressed: _refreshLocationHistory,
+                tooltip: 'Atualizar histórico',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _locationHistoryFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting || _isLoadingHistory) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+              
+              if (snapshot.hasError) {
+                print('Erro no FutureBuilder: ${snapshot.error}');
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                        const SizedBox(height: 8),
+                        Text('Erro ao carregar histórico: ${snapshot.error}'),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: _refreshLocationHistory,
+                          child: const Text('Tentar novamente'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24.0),
+                    child: Column(
+                      children: [
+                        Icon(Icons.location_off, color: Colors.grey, size: 48),
+                        SizedBox(height: 8),
+                        Text('Nenhum histórico de localização encontrado.'),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              
+              final history = snapshot.data!;
+              print('Renderizando ${history.length} entradas do histórico');
+              
+              return Column(
+                children: List.generate(history.length, (index) {
+                  final entry = history[index];
+                  print('Entry $index: $entry');
+                  
+                  final sector = entry['sector']?.toString() ?? 'N/A';
+                  final floor = entry['floor']?.toString() ?? 'N/A';
+                  final location = "$sector - $floor";
+                  final timestamp = entry['timestamp']?.toString() ?? '';
+                  
+                  return _buildTimelineTile(
+                    icon: Icons.location_on_outlined,
+                    title: location,
+                    subtitle: formatDateTime(parseLastSeen(timestamp)),
+                    color: Colors.purple.shade700,
+                    isFirst: index == 0,
+                    isLast: index == history.length - 1,
+                  );
+                }),
               );
-            }),
-          );
-        },
+            },
+          ),
+        ],
       ),
     );
   }
