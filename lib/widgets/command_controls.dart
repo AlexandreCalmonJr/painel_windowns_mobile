@@ -4,30 +4,23 @@ import 'package:flutter/material.dart';
 import 'package:painel_windowns/models/device.dart';
 import 'package:painel_windowns/services/device_service.dart';
 
-// Enum para identificar as ações do menu
 enum DeviceAction { lock, setMaintenance, uninstallApp, installApp, delete }
 
 class CommandControls extends StatelessWidget {
   final Device device;
-  final String serverIp;
-  final String serverPort;
   final String token;
   final VoidCallback onCommandExecuted;
 
   const CommandControls({
     super.key,
     required this.device,
-    required this.serverIp,
-    required this.serverPort,
     required this.token,
     required this.onCommandExecuted,
   });
 
-  // Função principal que lida com a seleção de uma ação
   void _handleAction(BuildContext context, DeviceAction action) {
     switch (action) {
       case DeviceAction.lock:
-        // --- LINHA CORRIGIDA AQUI ---
         _showConfirmationDialog(
           context,
           'Bloquear Dispositivo',
@@ -35,7 +28,6 @@ class CommandControls extends StatelessWidget {
           onConfirm: () => _executeCommand(context, 'lock', {}),
         );
         break;
-      // --- FIM DA CORREÇÃO ---
       case DeviceAction.setMaintenance:
         _showMaintenanceDialog(context);
         break;
@@ -57,20 +49,17 @@ class CommandControls extends StatelessWidget {
     }
   }
 
-  // Executa o comando e mostra o resultado
   Future<void> _executeCommand(BuildContext context, String command, Map<String, dynamic> params) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    // Garante que o widget ainda está montado antes de usar o context
     if (!context.mounted) return;
 
     try {
       String message;
       final deviceService = DeviceService();
-      // O comando de exclusão usa um método de serviço diferente
       if (command == 'delete_device') {
-        message = await deviceService.deleteDevice(serverIp, serverPort, token, device.serialNumber!);
+        message = await deviceService.deleteDevice(token, device.serialNumber!);
       } else {
-        message = await deviceService.sendCommand(serverIp, serverPort, token, device.serialNumber!, command, params);
+        message = await deviceService.sendCommand(token, device.serialNumber!, command, params);
       }
       
       scaffoldMessenger.showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green));
@@ -79,8 +68,6 @@ class CommandControls extends StatelessWidget {
       scaffoldMessenger.showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
     }
   }
-
-  // --- Diálogos de UI ---
 
   void _showConfirmationDialog(BuildContext context, String title, String content, {bool isDestructive = false, required VoidCallback onConfirm}) {
     showDialog(

@@ -10,12 +10,9 @@ import 'package:painel_windowns/services/device_service.dart';
 import 'package:painel_windowns/utils/helpers.dart';
 import 'package:path_provider/path_provider.dart';
 
-
 class UnitsTab extends StatefulWidget {
   final List<Unit> units;
   final List<BssidMapping> bssidMappings;
-  final String serverIp;
-  final String serverPort;
   final String token;
   final VoidCallback onDataUpdate;
 
@@ -23,8 +20,6 @@ class UnitsTab extends StatefulWidget {
     super.key,
     required this.units,
     required this.bssidMappings,
-    required this.serverIp,
-    required this.serverPort,
     required this.token,
     required this.onDataUpdate,
   });
@@ -46,8 +41,6 @@ class _UnitsTabState extends State<UnitsTab> {
       ),
     );
   }
-
-  // --- LÓGICA DE UNIDADES (CRUD) ---
 
   void _showUnitDialog({Unit? unit}) {
     final isEditing = unit != null;
@@ -90,9 +83,9 @@ class _UnitsTabState extends State<UnitsTab> {
                 final newUnit = Unit(name: name, ipRangeStart: startIp, ipRangeEnd: endIp);
                 String message;
                 if (isEditing) {
-                  message = await _deviceService.updateUnit(widget.serverIp, widget.serverPort, widget.token, unit.name, newUnit);
+                  message = await _deviceService.updateUnit(widget.token, unit!.name, newUnit);
                 } else {
-                  message = await _deviceService.createUnit(widget.serverIp, widget.serverPort, widget.token, newUnit);
+                  message = await _deviceService.createUnit(widget.token, newUnit);
                 }
                 
                 if (!mounted) return;
@@ -122,7 +115,7 @@ class _UnitsTabState extends State<UnitsTab> {
           TextButton(
             onPressed: () async {
               try {
-                final message = await _deviceService.deleteUnit(widget.serverIp, widget.serverPort, widget.token, unit.name);
+                final message = await _deviceService.deleteUnit(widget.token, unit.name);
                 if (!mounted) return;
                 Navigator.of(context).pop();
                 _showSnackbar(message);
@@ -138,8 +131,6 @@ class _UnitsTabState extends State<UnitsTab> {
     );
   }
   
-  // --- LÓGICA DE BSSID (CRUD) ---
-
   void _showBssidMappingDialog({BssidMapping? mapping}) {
     final isEditing = mapping != null;
     final macController = TextEditingController(text: mapping?.macAddressRadio);
@@ -182,9 +173,9 @@ class _UnitsTabState extends State<UnitsTab> {
                 final newMapping = BssidMapping(macAddressRadio: mac, sector: sector, floor: floor);
                 String message;
                 if (isEditing) {
-                  message = await _deviceService.updateBssidMapping(widget.serverIp, widget.serverPort, widget.token, mapping.macAddressRadio, newMapping);
+                  message = await _deviceService.updateBssidMapping(widget.token, mapping!.macAddressRadio, newMapping);
                 } else {
-                  message = await _deviceService.createBssidMapping(widget.serverIp, widget.serverPort, widget.token, newMapping);
+                  message = await _deviceService.createBssidMapping(widget.token, newMapping);
                 }
                 
                 if (!mounted) return;
@@ -214,7 +205,7 @@ class _UnitsTabState extends State<UnitsTab> {
           TextButton(
             onPressed: () async {
               try {
-                final message = await _deviceService.deleteBssidMapping(widget.serverIp, widget.serverPort, widget.token, mapping.macAddressRadio);
+                final message = await _deviceService.deleteBssidMapping(widget.token, mapping.macAddressRadio);
                 if (!mounted) return;
                 Navigator.of(context).pop();
                 _showSnackbar(message);
@@ -230,8 +221,6 @@ class _UnitsTabState extends State<UnitsTab> {
     );
   }
 
-  // --- LÓGICA DE IMPORTAÇÃO / EXPORTAÇÃO ---
-  
   Future<void> _importData() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json', 'xlsx']);
     if (result == null || result.files.single.path == null) return;
@@ -257,15 +246,15 @@ class _UnitsTabState extends State<UnitsTab> {
     if (data['unidades'] is List) {
       for (final item in data['unidades']) {
         final unit = Unit.fromJson(item);
-        await _deviceService.createUnit(widget.serverIp, widget.serverPort, widget.token, unit)
-          .catchError((_) => _deviceService.updateUnit(widget.serverIp, widget.serverPort, widget.token, unit.name, unit));
+        await _deviceService.createUnit(widget.token, unit)
+          .catchError((_) => _deviceService.updateUnit(widget.token, unit.name, unit));
       }
     }
     if (data['mapeamentos_bssid'] is List) {
       for (final item in data['mapeamentos_bssid']) {
         final mapping = BssidMapping.fromJson(item);
-        await _deviceService.createBssidMapping(widget.serverIp, widget.serverPort, widget.token, mapping)
-          .catchError((_) => _deviceService.updateBssidMapping(widget.serverIp, widget.serverPort, widget.token, mapping.macAddressRadio, mapping));
+        await _deviceService.createBssidMapping(widget.token, mapping)
+          .catchError((_) => _deviceService.updateBssidMapping(widget.token, mapping.macAddressRadio, mapping));
       }
     }
   }
@@ -273,26 +262,23 @@ class _UnitsTabState extends State<UnitsTab> {
   Future<void> _importFromExcel(File file) async {
     final excel = xls.Excel.decodeBytes(await file.readAsBytes());
 
-    // Importar da folha 'Unidades'
     final xls.Sheet? unitSheet = excel.tables['Unidades'];
     if (unitSheet != null) {
-      for (var i = 1; i < unitSheet.rows.length; i++) { // Pula cabeçalho
+      for (var i = 1; i < unitSheet.rows.length; i++) {
         final row = unitSheet.rows[i];
         if (row.length >= 3 && row[0] != null && row[1] != null && row[2] != null) {
           final unit = Unit(name: row[0]!.value.toString(), ipRangeStart: row[1]!.value.toString(), ipRangeEnd: row[2]!.value.toString());
           if (unit.name.isNotEmpty) {
-            await _deviceService.createUnit(widget.serverIp, widget.serverPort, widget.token, unit)
-              .catchError((_) => _deviceService.updateUnit(widget.serverIp, widget.serverPort, widget.token, unit.name, unit));
+            await _deviceService.createUnit(widget.token, unit)
+              .catchError((_) => _deviceService.updateUnit(widget.token, unit.name, unit));
           }
         }
       }
     }
 
-    // --- INÍCIO DA LÓGICA ADICIONADA ---
-    // Importar da folha 'Mapeamentos BSSID'
     final xls.Sheet? bssidSheet = excel.tables['Mapeamentos BSSID'];
     if (bssidSheet != null) {
-      for (var i = 1; i < bssidSheet.rows.length; i++) { // Pula cabeçalho
+      for (var i = 1; i < bssidSheet.rows.length; i++) {
         final row = bssidSheet.rows[i];
         if (row.length >= 3 && row[0] != null && row[1] != null && row[2] != null) {
           final mapping = BssidMapping(
@@ -301,13 +287,12 @@ class _UnitsTabState extends State<UnitsTab> {
             floor: row[2]!.value.toString(),
           );
           if (mapping.macAddressRadio.isNotEmpty) {
-            await _deviceService.createBssidMapping(widget.serverIp, widget.serverPort, widget.token, mapping)
-              .catchError((_) => _deviceService.updateBssidMapping(widget.serverIp, widget.serverPort, widget.token, mapping.macAddressRadio, mapping));
+            await _deviceService.createBssidMapping(widget.token, mapping)
+              .catchError((_) => _deviceService.updateBssidMapping(widget.token, mapping.macAddressRadio, mapping));
           }
         }
       }
     }
-    // --- FIM DA LÓGICA ADICIONADA ---
   }
   
   void _showExportDialog() {
@@ -358,7 +343,6 @@ class _UnitsTabState extends State<UnitsTab> {
         _showSnackbar('Erro ao salvar o arquivo: $e', isError: true);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {

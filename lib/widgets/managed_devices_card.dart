@@ -11,30 +11,28 @@ class ManagedDevicesCard extends StatelessWidget {
   final String title;
   final List<Device> devices;
   final bool showActions;
-  final String? serverIp;
-  final String? serverPort;
   final String? token;
   final VoidCallback? onDeviceUpdate;
+  final Map<String, dynamic>? currentUser;
 
   const ManagedDevicesCard({
     super.key,
     required this.title,
     required this.devices,
     this.showActions = false,
-    this.serverIp,
-    this.serverPort,
     this.token,
     this.onDeviceUpdate,
+    this.currentUser,
   });
 
-  Future<void> _downloadDevicesCsv(BuildContext context) async {
+  Future<void> _downloadDevicesCsv(BuildContext context, List<Device> devicesToExport) async {
     final headers = [
       'Dispositivo', 'Modelo', 'IMEI', 'Serial', 'Status', 'Última Sincronização',
       'Bateria', 'Endereço IP', 'Rede', 'Endereço MAC', 'Em Manutenção', 'Chamado',
       'Unidade', 'Setor', 'Andar',
     ];
 
-    final rows = devices.map((device) {
+    final rows = devicesToExport.map((device) {
       final lastSeenTime = parseLastSeen(device.lastSeen);
       final online = isDeviceOnline(lastSeenTime);
       final inMaintenance = device.maintenanceStatus ?? false;
@@ -68,6 +66,25 @@ class ManagedDevicesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    List<Device> filteredDevices = devices;
+    final userRole = currentUser?['role'];
+    final userSector = currentUser?['sector']; // Agora contém "Enfermagem,UTI"
+
+    if (userRole == 'user' && userSector != null && userSector.isNotEmpty) {
+      // Transforma a string "Enfermagem, UTI" numa lista de prefixos: ["enfermagem", "uti"]
+      final prefixes = userSector.split(',').map((p) => p.trim().toLowerCase()).where((p) => p.isNotEmpty).toList();
+      
+      if (prefixes.isNotEmpty) {
+        filteredDevices = devices.where((device) {
+          final deviceName = device.deviceName?.toLowerCase() ?? '';
+          // Verifica se o nome do dispositivo começa com ALGUM dos prefixos permitidos.
+          return prefixes.any((prefix) => deviceName.startsWith(prefix));
+        }).toList();
+      } else {
+        filteredDevices = []; // Se não houver prefixos, não mostra nada.
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -90,7 +107,7 @@ class ManagedDevicesCard extends StatelessWidget {
             children: [
               Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[800])),
               ElevatedButton.icon(
-                onPressed: () => _downloadDevicesCsv(context),
+                onPressed: () => _downloadDevicesCsv(context, filteredDevices),
                 icon: const Icon(Icons.download, size: 16),
                 label: const Text('Baixar CSV'),
                 style: ElevatedButton.styleFrom(
@@ -108,18 +125,17 @@ class ManagedDevicesCard extends StatelessWidget {
               child: Table(
                 border: const TableBorder(horizontalInside: BorderSide(color: Colors.black12, width: 0.5)),
                 columnWidths: {
-                  0: const FlexColumnWidth(2.2), // Dispositivo
-                  1: const FlexColumnWidth(1.5), // Modelo
-                  2: const FlexColumnWidth(2),   // Serial
-                  3: const FlexColumnWidth(2),   // IMEI
-                  4: const FlexColumnWidth(1.2), // Status
-                  5: const FlexColumnWidth(2),   // Sincronização
-                  6: const FlexColumnWidth(1.5), // Unidade
-                  7: const FlexColumnWidth(1.5), // Setor/Andar
-                  if (showActions) 8: const FlexColumnWidth(1), // Ações
+                  0: const FlexColumnWidth(2.2),
+                  1: const FlexColumnWidth(1.5),
+                  2: const FlexColumnWidth(2),
+                  3: const FlexColumnWidth(2),
+                  4: const FlexColumnWidth(1.2),
+                  5: const FlexColumnWidth(2),
+                  6: const FlexColumnWidth(1.5),
+                  7: const FlexColumnWidth(1.5),
+                  if (showActions) 8: const FlexColumnWidth(1),
                 },
                 children: [
-                  // Cabeçalho da Tabela
                   TableRow(
                     decoration: BoxDecoration(color: Colors.grey.shade50),
                     children: [
@@ -134,8 +150,7 @@ class ManagedDevicesCard extends StatelessWidget {
                       if (showActions) _buildTableHeader('Ações'),
                     ],
                   ),
-                  // Linhas de Dados
-                  ...devices.map((device) => _buildDeviceTableRow(context, device)),
+                  ...filteredDevices.map((device) => _buildDeviceTableRow(context, device)),
                 ],
               ),
             ),
@@ -177,8 +192,6 @@ class ManagedDevicesCard extends StatelessWidget {
             verticalAlignment: TableCellVerticalAlignment.middle,
             child: CommandControls(
               device: device,
-              serverIp: serverIp!,
-              serverPort: serverPort!,
               token: token!,
               onCommandExecuted: onDeviceUpdate ?? () {},
             ),

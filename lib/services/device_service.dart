@@ -6,7 +6,12 @@ import 'package:http/http.dart' as http;
 import 'package:painel_windowns/models/bssid_mapping.dart';
 import 'package:painel_windowns/models/device.dart';
 import 'package:painel_windowns/models/unit.dart';
-import 'package:painel_windowns/utils/constants.dart';
+import 'package:painel_windowns/services/server_config_service.dart';
+
+
+
+const int kMaxRetries = 3;
+const Duration kRetryDelay = Duration(seconds: 2);
 
 class DeviceService {
   Future<http.Response> _performHttpRequest({
@@ -24,8 +29,8 @@ class DeviceService {
           try {
             final errorData = jsonDecode(response.body);
             throw Exception(errorData['error'] ?? 'Erro ${response.statusCode}: ${response.reasonPhrase}');
-          } catch(e) {
-             throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase}');
+          } catch (_) {
+            throw Exception('Erro ${response.statusCode}: ${response.reasonPhrase}');
           }
         }
       } on TimeoutException {
@@ -35,38 +40,48 @@ class DeviceService {
         if (attempts == kMaxRetries) throw Exception('$errorMessage: Falha na conexão com o servidor.');
         await Future.delayed(kRetryDelay);
       } catch (e) {
-        throw Exception('$errorMessage: $e');
+        throw Exception('$errorMessage: ${e.toString().replaceFirst("Exception: ", "")}');
       }
     }
     throw Exception('$errorMessage após $kMaxRetries tentativas.');
   }
 
-  Future<List<Device>> fetchDevices(String ip, String port, String token, List<Unit> units) async {
+  Future<List<Device>> fetchDevices(String token, List<Unit> units) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
+
     final response = await _performHttpRequest(
       request: () => http.get(
-        Uri.parse('http://$ip:$port/api/devices'),
+        Uri.parse('http://$serverIp:$serverPort/api/devices'),
         headers: {'Authorization': 'Bearer $token'},
       ),
       errorMessage: 'Erro ao buscar dispositivos',
     );
+
     final data = jsonDecode(response.body);
 
+    List<dynamic> devicesList;
     if (data is List) {
-      return data.map((json) => Device.fromJson(json, units)).toList();
+      devicesList = data;
+    } else if (data is Map<String, dynamic> && data.containsKey('devices')) {
+      devicesList = data['devices'] as List;
+    } else {
+      throw Exception('Resposta inválida do servidor: Esperado uma lista de dispositivos.');
     }
     
-    if (data is Map<String, dynamic> && data.containsKey('devices')) {
-      final devicesList = data['devices'] as List;
-      return devicesList.map((json) => Device.fromJson(json, units)).toList();
-    }
-    
-    throw Exception('Resposta inválida do servidor: Esperado uma lista de dispositivos.');
+    // CORREÇÃO: Chama o factory constructor correto, passando a lista de unidades.
+    return devicesList.map((json) => Device.fromJson(json, units)).toList();
   }
 
-  Future<List<BssidMapping>> fetchBssidMappings(String ip, String port, String token) async {
+  Future<List<BssidMapping>> fetchBssidMappings(String token) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
+
     final response = await _performHttpRequest(
       request: () => http.get(
-        Uri.parse('http://$ip:$port/api/bssid-mappings'),
+        Uri.parse('http://$serverIp:$serverPort/api/bssid-mappings'),
         headers: {'Authorization': 'Bearer $token'},
       ),
       errorMessage: 'Erro ao buscar mapeamentos de BSSID',
@@ -78,10 +93,14 @@ class DeviceService {
     throw Exception('Resposta inválida: Esperado uma lista de mapeamentos');
   }
 
-  Future<String> sendCommand(String ip, String port, String token, String serialNumber, String command, Map<String, dynamic> parameters) async {
+  Future<String> sendCommand(String token, String serialNumber, String command, Map<String, dynamic> parameters) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
+
     final response = await _performHttpRequest(
       request: () => http.post(
-        Uri.parse('http://$ip:$port/api/executeCommand'),
+        Uri.parse('http://$serverIp:$serverPort/api/executeCommand'),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
         body: jsonEncode({
           'serial_number': serialNumber,
@@ -95,10 +114,14 @@ class DeviceService {
     return data['message']?.toString() ?? 'Comando executado com sucesso';
   }
 
-  Future<String> deleteDevice(String ip, String port, String token, String serialNumber) async {
+  Future<String> deleteDevice(String token, String serialNumber) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
+
     final response = await _performHttpRequest(
       request: () => http.delete(
-        Uri.parse('http://$ip:$port/api/devices/$serialNumber'),
+        Uri.parse('http://$serverIp:$serverPort/api/devices/$serialNumber'),
         headers: {'Authorization': 'Bearer $token'},
       ),
       errorMessage: 'Erro ao excluir dispositivo',
@@ -107,10 +130,13 @@ class DeviceService {
     return data['message']?.toString() ?? 'Dispositivo excluído com sucesso';
   }
 
-  Future<String> createUnit(String ip, String port, String token, Unit unit) async {
+  Future<String> createUnit(String token, Unit unit) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
     await _performHttpRequest(
       request: () => http.post(
-        Uri.parse('http://$ip:$port/api/units'),
+        Uri.parse('http://$serverIp:$serverPort/api/units'),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
         body: jsonEncode(unit.toJson()),
       ),
@@ -119,10 +145,13 @@ class DeviceService {
     return 'Unidade criada com sucesso';
   }
 
-  Future<String> updateUnit(String ip, String port, String token, String unitName, Unit unit) async {
+  Future<String> updateUnit(String token, String unitName, Unit unit) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
     await _performHttpRequest(
       request: () => http.put(
-        Uri.parse('http://$ip:$port/api/units/$unitName'),
+        Uri.parse('http://$serverIp:$serverPort/api/units/$unitName'),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
         body: jsonEncode(unit.toJson()),
       ),
@@ -131,19 +160,25 @@ class DeviceService {
     return 'Unidade atualizada com sucesso';
   }
 
-  Future<String> deleteUnit(String ip, String port, String token, String unitName) async {
+  Future<String> deleteUnit(String token, String unitName) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
     final response = await _performHttpRequest(
-      request: () => http.delete(Uri.parse('http://$ip:$port/api/units/$unitName'), headers: {'Authorization': 'Bearer $token'}),
+      request: () => http.delete(Uri.parse('http://$serverIp:$serverPort/api/units/$unitName'), headers: {'Authorization': 'Bearer $token'}),
       errorMessage: 'Erro ao excluir unidade',
     );
     final data = jsonDecode(response.body);
     return data['message']?.toString() ?? 'Unidade excluída com sucesso';
   }
 
-  Future<String> createBssidMapping(String ip, String port, String token, BssidMapping mapping) async {
+  Future<String> createBssidMapping(String token, BssidMapping mapping) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
     await _performHttpRequest(
       request: () => http.post(
-        Uri.parse('http://$ip:$port/api/bssid-mappings'),
+        Uri.parse('http://$serverIp:$serverPort/api/bssid-mappings'),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
         body: jsonEncode(mapping.toJson()),
       ),
@@ -152,10 +187,13 @@ class DeviceService {
     return 'Mapeamento de BSSID criado com sucesso';
   }
 
-  Future<String> updateBssidMapping(String ip, String port, String token, String macAddressRadio, BssidMapping mapping) async {
+  Future<String> updateBssidMapping(String token, String macAddressRadio, BssidMapping mapping) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
     await _performHttpRequest(
       request: () => http.put(
-        Uri.parse('http://$ip:$port/api/bssid-mappings/$macAddressRadio'),
+        Uri.parse('http://$serverIp:$serverPort/api/bssid-mappings/$macAddressRadio'),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
         body: jsonEncode(mapping.toJson()),
       ),
@@ -164,11 +202,61 @@ class DeviceService {
     return 'Mapeamento de BSSID atualizado com sucesso';
   }
 
-  Future<String> deleteBssidMapping(String ip, String port, String token, String macAddressRadio) async {
-    final response = await _performHttpRequest(
-      request: () => http.delete(Uri.parse('http://$ip:$port/api/bssid-mappings/$macAddressRadio'), headers: {'Authorization': 'Bearer $token'}),
+  Future<String> deleteBssidMapping(String token, String macAddressRadio) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
+    await _performHttpRequest(
+      request: () => http.delete(Uri.parse('http://$serverIp:$serverPort/api/bssid-mappings/$macAddressRadio'), headers: {'Authorization': 'Bearer $token'}),
       errorMessage: 'Erro ao excluir mapeamento',
     );
     return 'Mapeamento de BSSID excluído com sucesso';
   }
+
+  Future<List<Unit>> fetchUnits(String token) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
+
+    final response = await _performHttpRequest(
+      request: () => http.get(
+        Uri.parse('http://$serverIp:$serverPort/api/units'),
+        headers: {'Authorization': 'Bearer $token'},
+      ),
+      errorMessage: 'Erro ao buscar unidades',
+    );
+
+    final data = jsonDecode(response.body);
+    if (data is List) {
+      return data.map((json) => Unit.fromJson(json)).toList();
+    } else if (data is Map<String, dynamic> && data.containsKey('units')) {
+      return (data['units'] as List).map((json) => Unit.fromJson(json)).toList();
+    } else {
+      throw Exception('Resposta inválida do servidor: Esperado uma lista de unidades.');
+    }
+  }
+
+    /// Busca o histórico de localização de um dispositivo específico.
+  Future<List<Map<String, dynamic>>> fetchLocationHistory(String token, String serialNumber) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
+
+    final response = await _performHttpRequest(
+      request: () => http.get(
+        // A rota que acabámos de criar no backend
+        Uri.parse('http://$serverIp:$serverPort/api/devices/$serialNumber/location-history'),
+        headers: {'Authorization': 'Bearer $token'},
+      ),
+      errorMessage: 'Erro ao buscar histórico de localização',
+    );
+
+    final data = jsonDecode(response.body);
+    if (data['success'] == true && data['history'] is List) {
+      return List<Map<String, dynamic>>.from(data['history']);
+    } else {
+      throw Exception(data['message'] ?? 'Falha ao carregar histórico de localização');
+    }
+  }
+
 }

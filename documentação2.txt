@@ -1,0 +1,216 @@
+Documentação do Painel de Controlo MDM
+1. Visão Geral do Projeto
+O Painel de Controlo MDM (Mobile Device Management) é uma aplicação de ambiente de trabalho para Windows, desenvolvida em Flutter, que serve como uma interface de gestão para um sistema de controlo de dispositivos móveis. A aplicação comunica com um backend Node.js através de uma API REST para monitorizar, gerir e executar comandos em dispositivos registados.
+
+O sistema foi desenhado com uma arquitetura robusta de autenticação e permissões, distinguindo entre utilizadores Administradores, com acesso total, e Utilizadores Comuns, com acesso restrito e visualização de dispositivos segmentada por setor.
+
+2. Funcionalidades Principais
+Autenticação e Configuração
+Ecrã de Login com Abas: O ecrã inicial permite que o utilizador insira as suas credenciais ou configure o endereço (IP e Porta) do servidor backend.
+
+Configuração Persistente: O endereço do servidor é guardado localmente no dispositivo, facilitando o acesso futuro.
+
+Autenticação por Token (JWT): Após um login bem-sucedido, o servidor gera um token JWT que é utilizado para autenticar todas as requisições subsequentes, garantindo a segurança da comunicação.
+
+Gestão de Utilizadores e Permissões (Acesso de Administrador)
+Controlo de Acesso Baseado em Papéis (RBAC):
+
+Administrador (admin): Acesso total a todas as funcionalidades, incluindo gestão de utilizadores, configurações de localização e execução de comandos remotos.
+
+Utilizador (user): Acesso limitado à visualização de dispositivos.
+
+CRUD de Utilizadores: Os administradores podem criar, listar, editar e eliminar utilizadores através de uma interface dedicada.
+
+Visibilidade de Dispositivos por Setor: Ao criar ou editar um Utilizador, o administrador pode definir prefixos dos nomes dos equipamentos (separados por vírgula) no campo "Prefixos de Dispositivos Visíveis". Isto restringe a visualização daquele utilizador apenas aos equipamentos cujo nome (deviceName) comece com um dos prefixos definidos. Por exemplo, um utilizador com o prefixo "Enfermagem" só verá dispositivos como "Enfermagem-Tablet-01".
+
+Gestão e Monitorização de Dispositivos
+Dashboard Central: Apresenta uma visão geral e em tempo real do estado de todos os dispositivos (Online, Offline, Em Manutenção).
+
+Listagem Detalhada de Dispositivos: Uma tabela paginada e com funcionalidade de pesquisa exibe todos os dispositivos, com informações como nome, estado, bateria, localização (setor/andar), etc.
+
+Visualização Filtrada: Um utilizador comum verá nesta lista apenas os dispositivos permitidos pelos seus prefixos de setor.
+
+Comandos Remotos (Acesso de Administrador):
+
+Bloquear dispositivo.
+
+Colocar/retirar de manutenção (com registo de chamado).
+
+Instalar/Desinstalar aplicações (via URL de APK ou nome de pacote).
+
+Excluir dispositivo da base de dados.
+
+Gestão de Localização (Acesso de Administrador)
+Gestão de Unidades: Permite criar, editar e eliminar unidades físicas, associando-as a faixas de IP para identificação automática.
+
+Mapeamento de BSSID: Permite associar o endereço MAC de pontos de acesso Wi-Fi a uma localização específica (Setor e Andar), possibilitando a localização indoor dos dispositivos.
+
+Importação e Exportação: Os dados de Unidades e Mapeamentos de BSSID podem ser importados e exportados em formato JSON ou Excel (XLSX), facilitando a gestão em massa.
+
+Relatórios e Análises (Acesso de Administrador)
+Gráficos Interativos: A aba de relatórios apresenta um gráfico de pizza interativo que mostra a distribuição dos dispositivos por estado (Online, Offline, Manutenção).
+
+Filtragem Dinâmica: Clicar numa secção do gráfico filtra e exibe uma lista detalhada apenas com os dispositivos correspondentes àquele estado.
+
+3. Arquitetura e Lógica
+Frontend (Aplicação Flutter)
+Estrutura de Serviços: A lógica de negócio está centralizada em serviços para facilitar a manutenção:
+
+AuthService: Gere todo o ciclo de vida da autenticação, desde o login e verificação de token até à gestão de utilizadores.
+
+DeviceService: Responsável por toda a comunicação com a API relacionada a dispositivos, unidades e mapeamentos.
+
+ServerConfigService: Gere o armazenamento local do endereço do servidor.
+
+Gestão de Estado: Utiliza StatefulWidget e o método setState para gerir o estado da UI e reagir a alterações nos dados.
+
+Instância Única de Serviços: O dashboard_screen cria e mantém as instâncias principais dos serviços (AuthService, DeviceService) e passa-as como parâmetros para os widgets filhos (abas) que precisam delas. Isto garante que toda a aplicação partilha o mesmo estado de autenticação.
+
+Backend (Servidor Node.js)
+API RESTful: Expõe endpoints para autenticação (/api/auth) e gestão de dispositivos (/api/devices, etc.).
+
+Autenticação: Utiliza JSON Web Tokens (JWT) para proteger as rotas. Um middleware verifica a validade do token e o papel (role) do utilizador em cada requisição a rotas protegidas.
+
+Base de Dados: Utiliza MongoDB para persistir os dados de dispositivos, utilizadores, unidades e mapeamentos.
+
+4. Documentação do Código (Ficheiros Chave)
+Esta secção detalha a função dos principais ficheiros da aplicação Flutter.
+
+lib/services/auth_service.dart
+Este é o cérebro da autenticação e gestão de utilizadores. Ele é responsável por:
+
+Comunicar com a API de autenticação (/api/auth).
+
+Guardar (login) e carregar (initializeFromStorage) o token de autenticação e os dados do utilizador no SharedPreferences.
+
+Fornecer getters convenientes como isLoggedIn e isAdmin que são usados em toda a aplicação para controlar o acesso.
+
+Centralizar todas as chamadas de API para CRUD de utilizadores (getUsers, createUser, etc.).
+
+class AuthService {
+  String? _token;
+  Map<String, dynamic>? _user;
+
+  // ... getters como isAdmin ...
+
+  // Carrega os dados do utilizador guardados quando a app inicia.
+  Future<void> initializeFromStorage() async {
+    final prefs = await SharedPreferences.getInstance();
+    _token = prefs.getString('token');
+    final userDataString = prefs.getString('user');
+    if (userDataString != null) {
+      _user = jsonDecode(userDataString);
+    }
+  }
+
+  // Guarda os dados do utilizador após um login bem-sucedido.
+  Future<Map<String, dynamic>> login(String username, String password) async {
+    // ...
+    if (response.statusCode == 200) {
+      // ...
+      _token = data['token'];
+      _user = data['user'];
+      // ...
+      await prefs.setString('token', _token!);
+      await prefs.setString('user', jsonEncode(_user)); // Linha crucial
+      return {'success': true};
+    }
+    // ...
+  }
+  
+  // Exemplo de chamada à API de utilizadores
+  Future<Map<String, dynamic>> getUsers() async {
+    if (!isAdmin) return {'success': false, 'message': 'Acesso não autorizado'};
+    // ... faz a chamada a /api/auth/users
+  }
+}
+
+lib/widgets/tabs/users_tab.dart
+Este widget renderiza a interface de gestão de utilizadores.
+
+Recebe AuthService: Em vez de criar uma nova instância, ele recebe a instância já autenticada do dashboard_screen, garantindo que a verificação isAdmin funcione corretamente.
+
+Formulário de Criação/Edição: Apresenta um diálogo com um formulário para adicionar ou editar utilizadores.
+
+Campo de Prefixos: Inclui o campo de texto "Prefixos de Dispositivos Visíveis", que é guardado no campo sector do modelo de utilizador.
+
+class UsersTab extends StatefulWidget {
+  final AuthService authService; // Recebe a instância principal
+
+  const UsersTab({super.key, required this.authService});
+  // ...
+}
+
+class _UsersTabState extends State<UsersTab> {
+  @override
+  Widget build(BuildContext context) {
+    // Usa a instância recebida para verificar a permissão
+    if (!widget.authService.isAdmin) {
+      return Center(child: Text('Acesso Restrito'));
+    }
+    // ... constrói a tabela de utilizadores
+  }
+}
+
+lib/widgets/managed_devices_card.dart
+Este é o widget reutilizável que exibe a tabela de dispositivos. A sua principal responsabilidade é aplicar a lógica de filtragem.
+
+Recebe currentUser: Obtém os dados do utilizador logado para saber o seu papel e setor/prefixos.
+
+Lógica de Filtragem: Antes de renderizar a lista, ele verifica se o utilizador é do tipo user. Se for, ele filtra a lista de dispositivos, mostrando apenas aqueles cujo deviceName começa com um dos prefixos definidos no campo sector do utilizador.
+
+class ManagedDevicesCard extends StatelessWidget {
+  final List<Device> devices;
+  final Map<String, dynamic>? currentUser;
+  // ... outros parâmetros
+
+  @override
+  Widget build(BuildContext context) {
+    List<Device> filteredDevices = devices;
+    final userRole = currentUser?['role'];
+    final userSector = currentUser?['sector']; // Contém "Enfermagem,UTI"
+
+    if (userRole == 'user' && userSector != null && userSector.isNotEmpty) {
+      // Transforma a string de prefixos numa lista
+      final prefixes = userSector.split(',').map((p) => p.trim().toLowerCase()).toList();
+      
+      filteredDevices = devices.where((device) {
+        final deviceName = device.deviceName?.toLowerCase() ?? '';
+        // Verifica se o nome do dispositivo começa com algum dos prefixos
+        return prefixes.any((prefix) => deviceName.startsWith(prefix));
+      }).toList();
+    }
+
+    // Renderiza a tabela usando a 'filteredDevices'
+    // ...
+  }
+}
+
+5. Guia de Utilização
+Perfil de Administrador
+Configurar o Servidor: No ecrã de login, aceda à aba "Servidor" para inserir o IP e a Porta corretos do seu backend.
+
+Login: Utilize as suas credenciais de administrador.
+
+Gerir Utilizadores:
+
+Aceda à aba "Utilizadores".
+
+Clique em "Novo Utilizador" para criar uma nova conta.
+
+Ao criar um utilizador com o papel user, preencha o campo "Prefixos de Dispositivos Visíveis" com os nomes que definirão a sua visibilidade (ex: TI, Recepcao, Posto 3).
+
+Gerir Localizações:
+
+Aceda à aba "Unidades".
+
+Adicione Unidades (com faixas de IP) e Mapeamentos de BSSID (MAC de APs com Setor/Andar).
+
+Utilize os botões de "Importar/Exportar" para uma gestão mais rápida.
+
+Perfil de Utilizador Comum
+Login: Utilize as credenciais fornecidas pelo administrador.
+
+Visualização: O painel exibirá automaticamente apenas os dispositivos permitidos. A lista na aba "Dispositivos" e os dados no "Dashboard" e "Relatórios" estarão pré-filtrados.
+
+Ações: As opções de gestão, como botões de comando, edição e exclusão, estarão ocultas.

@@ -1,109 +1,78 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+import 'package:painel_windowns/services/server_config_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
-  static const String baseUrl = 'http://localhost:3000';
-  
-  // Singleton pattern
-  static final AuthService _instance = AuthService._internal();
-  factory AuthService() => _instance;
-  AuthService._internal();
+  String? _token;
+  Map<String, dynamic>? _user;
 
-  // Dados do usuário atual
-  Map<String, dynamic>? _currentUser;
-  String? _currentToken;
+  String? get currentToken => _token;
+  Map<String, dynamic>? get currentUser => _user;
+  bool get isLoggedIn => _token != null;
+  bool get isAdmin => _user?['role'] == 'admin';
 
-  // Getters
-  Map<String, dynamic>? get currentUser => _currentUser;
-  String? get currentToken => _currentToken;
-  bool get isLoggedIn => _currentToken != null && _currentUser != null;
-  bool get isAdmin => _currentUser?['role'] == 'admin';
-  String get userSector => _currentUser?['sector'] ?? 'Desconhecido';
-
-  // Inicializar dados do usuário a partir do SharedPreferences
   Future<void> initializeFromStorage() async {
     final prefs = await SharedPreferences.getInstance();
-    _currentToken = prefs.getString('auth_token');
-    final userDataString = prefs.getString('user_data');
-    
+    _token = prefs.getString('token');
+    final userDataString = prefs.getString('user');
     if (userDataString != null) {
       try {
-        _currentUser = jsonDecode(userDataString);
+        _user = jsonDecode(userDataString);
       } catch (e) {
-        // Se houver erro ao decodificar, limpar dados
-        await logout();
+        await prefs.remove('user');
+        _user = null;
       }
     }
   }
 
-  // Fazer login
   Future<Map<String, dynamic>> login(String username, String password) async {
+    final config = ServerConfigService.instance.loadConfig();
+    final serverIp = config['ip'];
+    final serverPort = config['port'];
+
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/api/auth/login'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'username': username,
-          'password': password,
-        }),
-      );
-
-      final responseData = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && responseData['success'] == true) {
-        _currentToken = responseData['token'];
-        _currentUser = responseData['user'];
-
-        // Salvar no SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', _currentToken!);
-        await prefs.setString('user_data', jsonEncode(_currentUser!));
-
-        return {
-          'success': true,
-          'message': 'Login realizado com sucesso',
-          'user': _currentUser,
-        };
-      } else {
-        return {
-          'success': false,
-          'message': responseData['message'] ?? 'Erro ao fazer login',
-        };
-      }
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Erro de conexão. Verifique se o servidor está rodando.',
-      };
-    }
-  }
-
-  // Verificar se o token ainda é válido
-  Future<bool> verifyToken() async {
-    if (_currentToken == null) return false;
-
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/auth/verify'),
-        headers: {
-          'Authorization': 'Bearer $_currentToken',
-          'Content-Type': 'application/json',
-        },
+        Uri.parse('http://$serverIp:$serverPort/api/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'username': username, 'password': password}),
       );
 
       if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-        if (responseData['success'] == true) {
-          // Atualizar dados do usuário se necessário
-          _currentUser = responseData['user'];
-          return true;
-        }
+        final data = jsonDecode(response.body);
+        _token = data['token'];
+        _user = data['user'];
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', _token!);
+        await prefs.setString('user', jsonEncode(_user));
+        
+        return {'success': true};
+      } else {
+        final error = jsonDecode(response.body);
+        return {'success': false, 'message': error['message'] ?? 'Falha no login'};
       }
-      
-      // Token inválido, fazer logout
+    } catch (e) {
+      return {'success': false, 'message': 'Não foi possível conectar ao servidor.'};
+    }
+  }
+
+  Future<bool> verifyToken() async {
+    if (_token == null) return false;
+    final config = ServerConfigService.instance.loadConfig();
+    try {
+      final response = await http.get(
+        Uri.parse('http://${config['ip']}:${config['port']}/api/auth/verify'),
+        headers: {'Authorization': 'Bearer $_token'},
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _user = data['user'];
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user', jsonEncode(_user));
+        return true;
+      }
       await logout();
       return false;
     } catch (e) {
@@ -111,181 +80,88 @@ class AuthService {
     }
   }
 
-  // Fazer logout
   Future<void> logout() async {
-    _currentToken = null;
-    _currentUser = null;
-
-    // Limpar SharedPreferences
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    await prefs.remove('user_data');
+    await prefs.remove('token');
+    await prefs.remove('user');
+    _token = null;
+    _user = null;
+  }
+  
+  Future<Map<String, dynamic>> changePassword(String currentPassword, String newPassword) async {
+    if (_token == null) return {'success': false, 'message': 'Utilizador não autenticado'};
+    final config = ServerConfigService.instance.loadConfig();
+    final response = await http.post(
+      Uri.parse('http://${config['ip']}:${config['port']}/api/auth/change-password'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $_token'},
+      body: jsonEncode({'currentPassword': currentPassword, 'newPassword': newPassword}),
+    );
+    final data = jsonDecode(response.body);
+    return {'success': response.statusCode == 200, 'message': data['message']};
   }
 
-  // Fazer requisições autenticadas
-  Future<http.Response> authenticatedRequest(
-    String method,
-    String endpoint, {
-    Map<String, dynamic>? body,
-    Map<String, String>? additionalHeaders,
-  }) async {
-    if (_currentToken == null) {
-      throw Exception('Usuário não autenticado');
-    }
-
-    final headers = {
-      'Authorization': 'Bearer $_currentToken',
-      'Content-Type': 'application/json',
-      ...?additionalHeaders,
-    };
-
-    final uri = Uri.parse('$baseUrl$endpoint');
-
-    switch (method.toUpperCase()) {
-      case 'GET':
-        return await http.get(uri, headers: headers);
-      case 'POST':
-        return await http.post(
-          uri,
-          headers: headers,
-          body: body != null ? jsonEncode(body) : null,
-        );
-      case 'PUT':
-        return await http.put(
-          uri,
-          headers: headers,
-          body: body != null ? jsonEncode(body) : null,
-        );
-      case 'DELETE':
-        return await http.delete(uri, headers: headers);
-      default:
-        throw Exception('Método HTTP não suportado: $method');
-    }
-  }
-
-  // Alterar senha
-  Future<Map<String, dynamic>> changePassword(
-    String currentPassword,
-    String newPassword,
-  ) async {
-    try {
-      final response = await authenticatedRequest(
-        'POST',
-        '/api/auth/change-password',
-        body: {
-          'currentPassword': currentPassword,
-          'newPassword': newPassword,
-        },
-      );
-
-      final responseData = jsonDecode(response.body);
-
-      return {
-        'success': responseData['success'] ?? false,
-        'message': responseData['message'] ?? 'Erro desconhecido',
-      };
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Erro de conexão',
-      };
-    }
-  }
-
-  // Obter lista de usuários (apenas admin)
   Future<Map<String, dynamic>> getUsers() async {
-    if (!isAdmin) {
-      return {
-        'success': false,
-        'message': 'Acesso negado',
-      };
-    }
-
+    if (!isAdmin) return {'success': false, 'message': 'Acesso não autorizado'};
+    final config = ServerConfigService.instance.loadConfig();
     try {
-      final response = await authenticatedRequest('GET', '/api/auth/users');
-      final responseData = jsonDecode(response.body);
-
-      return responseData;
+      final response = await http.get(
+        Uri.parse('http://${config['ip']}:${config['port']}/api/auth/users'),
+        headers: {'Authorization': 'Bearer $_token'},
+      );
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'users': data['users']};
+      }
+      return {'success': false, 'message': data['message'] ?? 'Erro ao buscar utilizadores'};
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Erro de conexão',
-      };
+      return {'success': false, 'message': 'Falha na conexão ao buscar utilizadores'};
     }
   }
 
-  // Criar usuário (apenas admin)
   Future<Map<String, dynamic>> createUser(Map<String, dynamic> userData) async {
-    if (!isAdmin) {
-      return {
-        'success': false,
-        'message': 'Acesso negado',
-      };
-    }
-
+     if (!isAdmin) return {'success': false, 'message': 'Acesso não autorizado'};
+    final config = ServerConfigService.instance.loadConfig();
     try {
-      final response = await authenticatedRequest(
-        'POST',
-        '/api/auth/register',
-        body: userData,
+      final response = await http.post(
+        Uri.parse('http://${config['ip']}:${config['port']}/api/auth/register'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $_token'},
+        body: jsonEncode(userData),
       );
-      final responseData = jsonDecode(response.body);
-
-      return responseData;
+      final data = jsonDecode(response.body);
+      return {'success': response.statusCode == 201, 'message': data['message']};
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Erro de conexão',
-      };
+      return {'success': false, 'message': 'Falha na conexão ao criar utilizador'};
     }
   }
 
-  // Atualizar usuário (apenas admin)
   Future<Map<String, dynamic>> updateUser(String userId, Map<String, dynamic> userData) async {
-    if (!isAdmin) {
-      return {
-        'success': false,
-        'message': 'Acesso negado',
-      };
-    }
-
+     if (!isAdmin) return {'success': false, 'message': 'Acesso não autorizado'};
+    final config = ServerConfigService.instance.loadConfig();
     try {
-      final response = await authenticatedRequest(
-        'PUT',
-        '/api/auth/users/$userId',
-        body: userData,
+      final response = await http.put(
+        Uri.parse('http://${config['ip']}:${config['port']}/api/auth/users/$userId'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $_token'},
+        body: jsonEncode(userData),
       );
-      final responseData = jsonDecode(response.body);
-
-      return responseData;
+      final data = jsonDecode(response.body);
+      return {'success': response.statusCode == 200, 'message': data['message']};
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Erro de conexão',
-      };
+      return {'success': false, 'message': 'Falha na conexão ao atualizar utilizador'};
     }
   }
 
-  // Deletar usuário (apenas admin)
   Future<Map<String, dynamic>> deleteUser(String userId) async {
-    if (!isAdmin) {
-      return {
-        'success': false,
-        'message': 'Acesso negado',
-      };
-    }
-
+     if (!isAdmin) return {'success': false, 'message': 'Acesso não autorizado'};
+    final config = ServerConfigService.instance.loadConfig();
     try {
-      final response = await authenticatedRequest('DELETE', '/api/auth/users/$userId');
-      final responseData = jsonDecode(response.body);
-
-      return responseData;
+      final response = await http.delete(
+        Uri.parse('http://${config['ip']}:${config['port']}/api/auth/users/$userId'),
+        headers: {'Authorization': 'Bearer $_token'},
+      );
+      final data = jsonDecode(response.body);
+      return {'success': response.statusCode == 200, 'message': data['message']};
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Erro de conexão',
-      };
+      return {'success': false, 'message': 'Falha na conexão ao eliminar utilizador'};
     }
   }
 }
-

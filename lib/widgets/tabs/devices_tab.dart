@@ -6,12 +6,11 @@ import 'package:painel_windowns/widgets/managed_devices_card.dart';
 
 class DevicesTab extends StatefulWidget {
   final List<Device> devices;
-  final String serverIp;
-  final String serverPort;
   final String token;
   final VoidCallback onDeviceUpdate;
+  final bool isReadOnly;
+  final Map<String, dynamic>? currentUser;
 
-  // --- PARÂMETROS ADICIONADOS AQUI ---
   final int currentPage;
   final int totalPages;
   final Function(int) onPageChange;
@@ -20,15 +19,14 @@ class DevicesTab extends StatefulWidget {
   const DevicesTab({
     super.key,
     required this.devices,
-    required this.serverIp,
-    required this.serverPort,
     required this.token,
     required this.onDeviceUpdate,
-    // --- E ADICIONADOS AO CONSTRUTOR ---
+    required this.isReadOnly,
+    required this.currentUser,
     required this.currentPage,
     required this.totalPages,
     required this.onPageChange,
-    required this.onSearch, required bool isReadOnly,
+    required this.onSearch,
   });
 
   @override
@@ -45,8 +43,7 @@ class _DevicesTabState extends State<DevicesTab> {
     _searchController.addListener(() {
       if (_debounce?.isActive ?? false) _debounce!.cancel();
       _debounce = Timer(const Duration(milliseconds: 500), () {
-        // Verifica se o texto realmente mudou para evitar buscas desnecessárias
-        if (mounted && _searchController.text != (widget).onSearch.toString()) {
+        if (mounted) {
            widget.onSearch(_searchController.text);
         }
       });
@@ -64,7 +61,6 @@ class _DevicesTabState extends State<DevicesTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // CAMPO DE BUSCA
         Padding(
           padding: const EdgeInsets.only(bottom: 16.0),
           child: TextField(
@@ -87,19 +83,16 @@ class _DevicesTabState extends State<DevicesTab> {
             ),
           ),
         ),
-        // TABELA DE DISPOSITIVOS
         Expanded(
           child: ManagedDevicesCard(
             title: 'Todos os Dispositivos',
             devices: widget.devices,
-            showActions: true,
-            serverIp: widget.serverIp,
-            serverPort: widget.serverPort,
+            showActions: !widget.isReadOnly,
             token: widget.token,
             onDeviceUpdate: widget.onDeviceUpdate,
+            currentUser: widget.currentUser, // Passando o usuário
           ),
         ),
-        // CONTROLES DE PAGINAÇÃO
         Padding(
           padding: const EdgeInsets.only(top: 16.0),
           child: Row(

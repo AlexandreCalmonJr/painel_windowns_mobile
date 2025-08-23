@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:painel_windowns/login_screen.dart';
+import 'package:painel_windowns/services/server_config_service.dart';
 
-void main() {
+void main() async {
+  // Garante que os bindings do Flutter estejam prontos antes de qualquer outra coisa.
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // CRÍTICO: Espera o serviço de configuração ser inicializado ANTES de rodar o app.
+  // Isso corrige o erro 'LateInitializationError'.
+  await ServerConfigService.instance.initialize();
+  
   runApp(const MyApp());
 }
 
@@ -11,14 +19,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MDM Control Panel',
+      title: 'Painel MDM',
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.grey[50],
-        useMaterial3: true,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: const LoginScreen(),
       debugShowCheckedModeBanner: false,
+      home: const LoginScreen(),
     );
   }
 }
