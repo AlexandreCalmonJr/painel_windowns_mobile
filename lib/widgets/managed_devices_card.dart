@@ -64,101 +64,169 @@ class ManagedDevicesCard extends StatelessWidget {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    List<Device> filteredDevices = devices;
-    final userRole = currentUser?['role'];
-    final userSector = currentUser?['sector']; // Agora contém "Enfermagem,UTI"
+// CORREÇÃO FINAL baseada na estrutura real dos dados
 
-    if (userRole == 'user' && userSector != null && userSector.isNotEmpty) {
-      // Transforma a string "Enfermagem, UTI" numa lista de prefixos: ["enfermagem", "uti"]
-      final prefixes = userSector.split(',').map((p) => p.trim().toLowerCase()).where((p) => p.isNotEmpty).toList();
+@override
+Widget build(BuildContext context) {
+  List<Device> filteredDevices = devices;
+  
+  // Verificar se currentUser não é null e extrair dados com segurança
+  if (currentUser != null) {
+    final String? userRole = currentUser!['role']?.toString();
+    final String? userSectorPrefixes = currentUser!['sector']?.toString();
+    
+    // Debug para verificar os valores (remova após testar)
+    print('User Role: $userRole');
+    print('User Sector: $userSectorPrefixes');
+    
+    // Apenas filtrar se o usuário for do tipo 'user' e não tiver setor 'Global'
+    if (userRole == 'user' && 
+        userSectorPrefixes != null && 
+        userSectorPrefixes.isNotEmpty && 
+        userSectorPrefixes != 'Global') {
+      
+      // Processar os prefixos de forma segura
+      final List<String> prefixes = userSectorPrefixes
+          .split(',')
+          .map((String prefix) => prefix.trim().toLowerCase())
+          .where((String prefix) => prefix.isNotEmpty)
+          .toList();
+      
+      print('Prefixes to filter: $prefixes'); // Debug
       
       if (prefixes.isNotEmpty) {
-        filteredDevices = devices.where((device) {
-          final deviceName = device.deviceName?.toLowerCase() ?? '';
-          // Verifica se o nome do dispositivo começa com ALGUM dos prefixos permitidos.
-          return prefixes.any((prefix) => deviceName.startsWith(prefix));
-        }).toList();
+        // Usar um método mais explícito e seguro para filtrar
+        final List<Device> tempFilteredDevices = <Device>[];
+        
+        for (final Device device in devices) {
+          if (device.deviceName != null) {
+            final String deviceName = device.deviceName!.toLowerCase();
+            
+            // Verificar se o nome do dispositivo começa com algum dos prefixos
+            bool matchFound = false;
+            for (final String prefix in prefixes) {
+              if (deviceName.startsWith(prefix)) {
+                matchFound = true;
+                break;
+              }
+            }
+            
+            if (matchFound) {
+              tempFilteredDevices.add(device);
+            }
+          }
+        }
+        
+        filteredDevices = tempFilteredDevices;
+        print('Filtered devices count: ${filteredDevices.length}'); // Debug
       } else {
-        filteredDevices = []; // Se não houver prefixos, não mostra nada.
+        // Se não há prefixos válidos, usuário não vê nenhum dispositivo
+        filteredDevices = <Device>[];
       }
     }
+    // Se é admin ou setor é 'Global', mostra todos os dispositivos (não filtra)
+  }
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[800])),
-              ElevatedButton.icon(
-                onPressed: () => _downloadDevicesCsv(context, filteredDevices),
-                icon: const Icon(Icons.download, size: 16),
-                label: const Text('Baixar CSV'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  textStyle: const TextStyle(fontSize: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 24),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Table(
-                border: const TableBorder(horizontalInside: BorderSide(color: Colors.black12, width: 0.5)),
-                columnWidths: {
-                  0: const FlexColumnWidth(2.2),
-                  1: const FlexColumnWidth(1.5),
-                  2: const FlexColumnWidth(2),
-                  3: const FlexColumnWidth(2),
-                  4: const FlexColumnWidth(1.2),
-                  5: const FlexColumnWidth(2),
-                  6: const FlexColumnWidth(1.5),
-                  7: const FlexColumnWidth(1.5),
-                  if (showActions) 8: const FlexColumnWidth(1),
-                },
-                children: [
-                  TableRow(
-                    decoration: BoxDecoration(color: Colors.grey.shade50),
-                    children: [
-                      _buildTableHeader('Dispositivo'),
-                      _buildTableHeader('Modelo'),
-                      _buildTableHeader('Serial'),
-                      _buildTableHeader('IMEI'),
-                      _buildTableHeader('Status'),
-                      _buildTableHeader('Última Sincronização'),
-                      _buildTableHeader('Unidade'),
-                      _buildTableHeader('Setor/Andar'),
-                      if (showActions) _buildTableHeader('Ações'),
-                    ],
-                  ),
-                  ...filteredDevices.map((device) => _buildDeviceTableRow(context, device)),
-                ],
+  return Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.grey.withOpacity(0.2),
+          spreadRadius: 1,
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              title, 
+              style: TextStyle(
+                fontSize: 18, 
+                fontWeight: FontWeight.bold, 
+                color: Colors.grey[800]
+              )
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _downloadDevicesCsv(context, filteredDevices),
+              icon: const Icon(Icons.download, size: 16),
+              label: const Text('Baixar CSV'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                textStyle: const TextStyle(fontSize: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),
+          ],
+        ),
+        const Divider(height: 24),
+        
+        // Adicionar informação de debug (remova depois de testar)
+        if (currentUser != null && currentUser!['role'] == 'user')
+          Container(
+            padding: const EdgeInsets.all(8),
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              border: Border.all(color: Colors.blue[200]!),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Filtrado por: ${currentUser!['sector']} | Dispositivos visíveis: ${filteredDevices.length}',
+              style: TextStyle(color: Colors.blue[700], fontSize: 12),
+            ),
           ),
-        ],
-      ),
-    );
-  }
+        
+        Expanded(
+          child: SingleChildScrollView(
+            child: Table(
+              border: const TableBorder(
+                horizontalInside: BorderSide(color: Colors.black12, width: 0.5)
+              ),
+              columnWidths: {
+                0: const FlexColumnWidth(2.2),
+                1: const FlexColumnWidth(1.5),
+                2: const FlexColumnWidth(2),
+                3: const FlexColumnWidth(2),
+                4: const FlexColumnWidth(1.2),
+                5: const FlexColumnWidth(2),
+                6: const FlexColumnWidth(1.5),
+                7: const FlexColumnWidth(1.5),
+                if (showActions) 8: const FlexColumnWidth(1),
+              },
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(color: Colors.grey.shade50),
+                  children: [
+                    _buildTableHeader('Dispositivo'),
+                    _buildTableHeader('Modelo'),
+                    _buildTableHeader('Serial'),
+                    _buildTableHeader('IMEI'),
+                    _buildTableHeader('Status'),
+                    _buildTableHeader('Última Sincronização'),
+                    _buildTableHeader('Unidade'),
+                    _buildTableHeader('Setor/Andar'),
+                    if (showActions) _buildTableHeader('Ações'),
+                  ],
+                ),
+                ...filteredDevices.map((device) => _buildDeviceTableRow(context, device)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildTableHeader(String text) {
     return Padding(

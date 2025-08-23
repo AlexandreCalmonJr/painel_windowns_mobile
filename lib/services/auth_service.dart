@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:painel_windowns/services/server_config_service.dart';
@@ -37,7 +39,7 @@ class AuthService {
         Uri.parse('http://$serverIp:$serverPort/api/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'username': username, 'password': password}),
-      );
+      ).timeout(const Duration(seconds: 10)); // Adiciona um timeout
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -53,8 +55,15 @@ class AuthService {
         final error = jsonDecode(response.body);
         return {'success': false, 'message': error['message'] ?? 'Falha no login'};
       }
+    // --- TRATAMENTO DE ERROS DE CONEXÃO MAIS ESPECÍFICO ---
+    } on TimeoutException {
+        return {'success': false, 'message': 'O servidor demorou muito para responder (Timeout). Verifique o IP e a rede.'};
+    } on SocketException {
+        return {'success': false, 'message': 'Não foi possível conectar ao servidor. Verifique o IP/Porta e se o servidor está ativo.'};
+    } on http.ClientException catch (e) {
+        return {'success': false, 'message': 'Erro de cliente de rede: ${e.message}. Verifique o IP e o Firewall.'};
     } catch (e) {
-      return {'success': false, 'message': 'Não foi possível conectar ao servidor.'};
+        return {'success': false, 'message': 'Ocorreu um erro inesperado: ${e.toString()}'};
     }
   }
 

@@ -93,23 +93,30 @@ class DeviceService {
     throw Exception('Resposta inválida: Esperado uma lista de mapeamentos');
   }
 
-  Future<String> sendCommand(String token, String serialNumber, String command, Map<String, dynamic> parameters) async {
+   Future<String> sendCommand(String token, String serialNumber, String command, Map<String, dynamic> parameters) async {
     final config = ServerConfigService.instance.loadConfig();
     final serverIp = config['ip'];
     final serverPort = config['port'];
 
+    // --- INÍCIO DA CORREÇÃO ---
+    // O corpo da requisição é montado com todos os dados necessários.
+    final body = {
+      'serial_number': serialNumber,
+      'command': command,
+      ...parameters, // Inclui parâmetros como 'packageName' ou os dados de manutenção
+    };
+
     final response = await _performHttpRequest(
       request: () => http.post(
-        Uri.parse('http://$serverIp:$serverPort/api/executeCommand'),
+        // A rota é sempre a mesma para todos os comandos.
+        Uri.parse('http://$serverIp:$serverPort/api/devices/executeCommand'),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'serial_number': serialNumber,
-          'command': command,
-          ...parameters,
-        }),
+        body: jsonEncode(body),
       ),
       errorMessage: 'Erro ao enviar comando',
     );
+    // --- FIM DA CORREÇÃO ---
+    
     final data = jsonDecode(response.body);
     return data['message']?.toString() ?? 'Comando executado com sucesso';
   }
