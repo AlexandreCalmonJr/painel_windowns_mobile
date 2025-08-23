@@ -133,14 +133,25 @@ class _MDMDashboardState extends State<MDMDashboard> {
         headers: {'Authorization': 'Bearer $token'},
       );
       if (mounted && response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        setState(
-          () => units = data.map((json) => Unit.fromJson(json)).toList(),
-        );
+        // --- INÍCIO DA CORREÇÃO ---
+        // 1. Decodifica a resposta completa, que é um Mapa (Objeto JSON).
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        
+        // 2. Verifica se a resposta foi bem-sucedida e se contém a chave 'units'.
+        if (data['success'] == true && data['units'] is List) {
+          // 3. Pega a lista de dentro da chave 'units'.
+          final List<dynamic> unitsList = data['units'];
+          
+          // 4. Atualiza o estado com a lista correta.
+          setState(() => units = unitsList.map((json) => Unit.fromJson(json)).toList());
+        } else {
+          // Lança um erro se o formato da resposta for inesperado.
+          throw Exception(data['message'] ?? 'Formato de resposta inválido ao carregar unidades');
+        }
+        // --- FIM DA CORREÇÃO ---
       }
     } catch (e) {
-      if (mounted)
-        _showSnackbar('Erro ao carregar unidades: $e', isError: true);
+      if (mounted) _showSnackbar('Erro ao carregar unidades: $e', isError: true);
     }
   }
 

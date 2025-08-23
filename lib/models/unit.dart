@@ -1,7 +1,7 @@
 /// Representa uma Unidade com uma faixa de IP associada.
 class Unit {
-  // O ID é opcional pois pode não existir ao criar uma nova unidade.
-  final int? id;
+  // CORREÇÃO: O ID do MongoDB é uma String, não um int.
+  final String? id;
   final String name;
   final String ipRangeStart;
   final String ipRangeEnd;
@@ -16,8 +16,8 @@ class Unit {
   /// Constrói uma instância de Unit a partir de um mapa JSON vindo da API.
   factory Unit.fromJson(Map<String, dynamic> json) {
     return Unit(
-      // O ID pode vir como '_id' do MongoDB ou 'id'.
-      id: json['_id'] ?? json['id'],
+      // O ID do MongoDB é a chave '_id' e é uma String.
+      id: json['_id'] as String?,
       name: json['name'],
       ipRangeStart: json['ip_range_start'],
       ipRangeEnd: json['ip_range_end'],
@@ -25,12 +25,11 @@ class Unit {
   }
 
   /// Converte a instância de Unit para um mapa JSON para ser enviado à API.
-  /// AQUI ESTÁ A CORREÇÃO: As chaves agora estão em snake_case para corresponder ao backend.
   Map<String, dynamic> toJson() {
     return {
       'name': name,
-      'ip_range_start': ipRangeStart, // Corrigido de 'ipRangeStart'
-      'ip_range_end': ipRangeEnd,     // Corrigido de 'ipRangeEnd'
+      'ip_range_start': ipRangeStart,
+      'ip_range_end': ipRangeEnd,
     };
   }
 }
