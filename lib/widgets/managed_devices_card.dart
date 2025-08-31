@@ -46,39 +46,58 @@ class ManagedDevicesCard extends StatelessWidget {
       'Endereço MAC',
       'Em Manutenção',
       'Chamado',
+      'Motivo da Manutenção',
       'Unidade',
       'Setor',
       'Andar',
     ];
 
-    final rows =
-        devicesToExport.map((device) {
-          final lastSeenTime = parseLastSeen(device.lastSeen);
-          final online = isDeviceOnline(lastSeenTime);
-          final inMaintenance = device.maintenanceStatus ?? false;
-          final status =
-              inMaintenance ? 'Em Manutenção' : (online ? 'Online' : 'Offline');
+      // Substitua a parte do CSV export no seu managed_devices_card.dart
 
-          return [
-                device.deviceName,
-                device.deviceModel ?? 'N/A',
-                device.imei ?? 'N/A',
-                device.serialNumber ?? 'N/A',
-                status,
-                formatDateTime(lastSeenTime),
-                device.battery != null ? '${device.battery}%' : 'N/A',
-                device.ipAddress ?? 'N/A',
-                device.network ?? 'N/A',
-                device.macAddress ?? 'N/A',
-                inMaintenance ? 'Sim' : 'Não',
-                device.maintenanceTicket ?? 'N/A',
-                device.unit ?? 'N/A',
-                device.sector ?? 'N/A',
-                device.floor ?? 'N/A',
-              ]
-              .map((value) => '"${value.toString().replaceAll('"', '""')}"')
-              .join(',');
-        }).toList();
+final rows = devicesToExport.map((device) {
+  final lastSeenTime = parseLastSeen(device.lastSeen);
+  final online = isDeviceOnline(lastSeenTime);
+  final inMaintenance = device.maintenanceStatus ?? false;
+  String status;
+  
+  if (inMaintenance) {
+    // LÓGICA ATUALIZADA para CSV
+    switch (device.maintenanceReason) {
+      case 'collected_by_it':
+        status = 'Recolhido pelo TI';
+        break;
+      case 'maintenance':
+        status = 'Em Manutenção';
+        break;
+      default:
+        // Para compatibilidade com registros antigos
+        status = 'Em Manutenção';
+    }
+  } else {
+    status = online ? 'Online' : 'Offline';
+  }
+
+  return [
+        device.deviceName,
+        device.deviceModel ?? 'N/A',
+        device.imei ?? 'N/A',
+        device.serialNumber ?? 'N/A',
+        status,
+        formatDateTime(lastSeenTime),
+        device.battery != null ? '${device.battery}%' : 'N/A',
+        device.ipAddress ?? 'N/A',
+        device.network ?? 'N/A',
+        device.macAddress ?? 'N/A',
+        inMaintenance ? 'Sim' : 'Não',
+        device.maintenanceTicket ?? 'N/A',
+        device.maintenanceReason ?? 'N/A',
+        device.unit ?? 'N/A',
+        device.sector ?? 'N/A',
+        device.floor ?? 'N/A',
+      ]
+      .map((value) => '"${value.toString().replaceAll('"', '""')}"')
+      .join(',');
+}).toList();
 
     final csvContent = [headers.join(','), ...rows].join('\n');
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -232,37 +251,58 @@ class ManagedDevicesCard extends StatelessWidget {
     );
   }
 
-  TableRow _buildDeviceTableRow(BuildContext context, Device device) {
-    final lastSeenTime = parseLastSeen(device.lastSeen);
-    final online = isDeviceOnline(lastSeenTime);
-    final inMaintenance = device.maintenanceStatus ?? false;
-    final status =
-        inMaintenance ? 'Manutenção' : (online ? 'Online' : 'Offline');
-    final statusColor =
-        inMaintenance ? Colors.blueGrey : (online ? Colors.green : Colors.red);
+  // Substitua a função _buildDeviceTableRow no seu managed_devices_card.dart
 
-    return TableRow(
-      children: [
-        _buildClickableDeviceCell(context, device),
-        _buildTableCell(device.deviceModel ?? 'N/A'),
-        _buildTableCell(device.serialNumber ?? 'N/A'),
-        _buildTableCell(device.imei ?? 'N/A'),
-        TableCell(child: Center(child: _buildStatusChip(status, statusColor))),
-        _buildTableCell(formatDateTime(lastSeenTime)),
-        _buildTableCell(device.unit ?? 'N/D'),
-        _buildTableCell('${device.sector ?? "N/D"} / ${device.floor ?? "N/D"}'),
-        if (showActions)
-          TableCell(
-            verticalAlignment: TableCellVerticalAlignment.middle,
-            child: CommandControls(
-              device: device,
-              token: token!,
-              onCommandExecuted: onDeviceUpdate ?? () {},
-            ),
+TableRow _buildDeviceTableRow(BuildContext context, Device device) {
+  final lastSeenTime = parseLastSeen(device.lastSeen);
+  final online = isDeviceOnline(lastSeenTime);
+  final inMaintenance = device.maintenanceStatus ?? false;
+  String status;
+  Color statusColor;
+
+  if (inMaintenance) {
+    // LÓGICA ATUALIZADA para diferentes tipos de manutenção
+    switch (device.maintenanceReason) {
+      case 'collected_by_it':
+        status = 'Recolhido pelo TI';
+        statusColor = Colors.purple;
+        break;
+      case 'maintenance':
+        status = 'Em Manutenção';
+        statusColor = Colors.orange;
+        break;
+      default:
+        // Para compatibilidade com registros antigos
+        status = 'Em Manutenção';
+        statusColor = Colors.orange;
+    }
+  } else {
+    status = online ? 'Online' : 'Offline';
+    statusColor = online ? Colors.green : Colors.red;
+  } 
+
+  return TableRow(
+    children: [
+      _buildClickableDeviceCell(context, device),
+      _buildTableCell(device.deviceModel ?? 'N/A'),
+      _buildTableCell(device.serialNumber ?? 'N/A'),
+      _buildTableCell(device.imei ?? 'N/A'),
+      TableCell(child: Center(child: _buildStatusChip(status, statusColor))),
+      _buildTableCell(formatDateTime(lastSeenTime)),
+      _buildTableCell(device.unit ?? 'N/D'),
+      _buildTableCell('${device.sector ?? "N/D"} / ${device.floor ?? "N/D"}'),
+      if (showActions)
+        TableCell(
+          verticalAlignment: TableCellVerticalAlignment.middle,
+          child: CommandControls(
+            device: device,
+            token: token!,
+            onCommandExecuted: onDeviceUpdate ?? () {},
           ),
-      ],
-    );
-  }
+        ),
+    ],
+  );
+}
 
   Widget _buildClickableDeviceCell(BuildContext context, Device device) {
     return TableCell(

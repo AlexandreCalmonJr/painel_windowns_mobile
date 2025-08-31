@@ -18,6 +18,7 @@ class Device {
   final String? floor;
   final bool? maintenanceStatus;
   final String? maintenanceTicket;
+  final String? maintenanceReason;
   final List<Map<String, dynamic>>? maintenanceHistory;
   final String? unit;
   final String? provisioningStatus;
@@ -44,8 +45,9 @@ class Device {
     this.lastSync,
     this.sector,
     this.floor,
-    this.maintenanceStatus,
+    this.maintenanceStatus,    
     this.maintenanceTicket,
+    this.maintenanceReason,
     this.maintenanceHistory,
     this.unit,
     this.provisioningStatus,
@@ -75,7 +77,8 @@ class Device {
       sector: json['sector']?.toString(),
       floor: json['floor']?.toString(),
       maintenanceStatus: json['maintenance_status'] is bool ? json['maintenance_status'] : false,
-      maintenanceTicket: json['maintenance_ticket']?.toString(),
+      maintenanceTicket: json["maintenance_ticket"]?.toString(),
+      maintenanceReason: json["maintenance_reason"]?.toString(),
       maintenanceHistory: (json['maintenance_history'] as List<dynamic>?)?.cast<Map<String, dynamic>>(),
       unit: json['unit']?.toString() ?? getUnitFromIp(json['ip_address']?.toString(), units),
       provisioningStatus: json['provisioning_status']?.toString(),
