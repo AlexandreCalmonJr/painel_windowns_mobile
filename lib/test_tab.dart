@@ -26,6 +26,7 @@ class TestTab extends StatelessWidget {
     lastSeen: DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
     sector: 'Recursos Humanos',
     floor: '5º Andar',
+    status: 'offline',
   );
 
   final Device mockDeviceLowBattery = Device(
@@ -35,6 +36,7 @@ class TestTab extends StatelessWidget {
     lastSeen: DateTime.now().toIso8601String(),
     sector: 'Vendas',
     floor: '2º Andar',
+    status: 'online',
   );
   
   final Device mockDeviceLocationChange = Device(
@@ -43,6 +45,7 @@ class TestTab extends StatelessWidget {
     sector: 'Almoxarifado', // Nova localização
     floor: 'Térreo',        // Nova localização
     lastSeen: DateTime.now().toIso8601String(),
+    status: 'online',
   );
 
   final Device mockDeviceOnline = Device(
@@ -51,6 +54,7 @@ class TestTab extends StatelessWidget {
     lastSeen: DateTime.now().toIso8601String(),
     sector: 'TI',
     floor: '10º Andar',
+    status: 'online',
   );
 
   @override

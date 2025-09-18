@@ -29,6 +29,7 @@ class Device {
   final String? complianceStatus;
   final List<Map<String, dynamic>>? installedApps;
   final Map<String, dynamic>? securityPolicies;
+  final String status;
 
   Device({
     this.id,
@@ -58,6 +59,8 @@ class Device {
     this.complianceStatus,
     this.installedApps,
     this.securityPolicies,
+    required this.status,
+    
   });
 
   factory Device.fromJson(Map<String, dynamic> json, List<Unit> units) {
@@ -89,6 +92,7 @@ class Device {
       complianceStatus: json['compliance_status']?.toString(),
       installedApps: (json['installed_apps'] as List<dynamic>?)?.cast<Map<String, dynamic>>(),
       securityPolicies: json['security_policies'] is Map ? json['security_policies'] as Map<String, dynamic> : null,
+      status: json['status'] ?? 'offline'
     );
   }
 }

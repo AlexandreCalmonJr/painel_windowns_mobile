@@ -254,32 +254,44 @@ final rows = devicesToExport.map((device) {
   // Substitua a função _buildDeviceTableRow no seu managed_devices_card.dart
 
 TableRow _buildDeviceTableRow(BuildContext context, Device device) {
-  final lastSeenTime = parseLastSeen(device.lastSeen);
-  final online = isDeviceOnline(lastSeenTime);
   final inMaintenance = device.maintenanceStatus ?? false;
-  String status;
+  String statusText;
   Color statusColor;
 
   if (inMaintenance) {
-    // LÓGICA ATUALIZADA para diferentes tipos de manutenção
+    // Mantém sua lógica de manutenção que já é ótima
     switch (device.maintenanceReason) {
       case 'collected_by_it':
-        status = 'Recolhido pelo TI';
+        statusText = 'Recolhido pelo TI';
         statusColor = Colors.purple;
         break;
       case 'maintenance':
-        status = 'Em Manutenção';
+        statusText = 'Em Manutenção';
         statusColor = Colors.orange;
         break;
       default:
-        // Para compatibilidade com registros antigos
-        status = 'Em Manutenção';
+        statusText = 'Em Manutenção';
         statusColor = Colors.orange;
     }
   } else {
-    status = online ? 'Online' : 'Offline';
-    statusColor = online ? Colors.green : Colors.red;
-  } 
+    // NOVA LÓGICA DE STATUS
+    // A prioridade agora é o status que vem do servidor
+    switch (device.status) {
+      case 'online':
+        statusText = 'Online';
+        statusColor = Colors.green;
+        break;
+      case 'Sem Monitorar': // Nosso novo status
+        statusText = 'Sem Monitorar';
+        statusColor = Colors.amber; // Uma nova cor para destacar
+        break;
+      case 'offline':
+      default: // Caso padrão
+        statusText = 'Offline';
+        statusColor = Colors.red;
+        break;
+    }
+  }
 
   return TableRow(
     children: [
@@ -287,8 +299,8 @@ TableRow _buildDeviceTableRow(BuildContext context, Device device) {
       _buildTableCell(device.deviceModel ?? 'N/A'),
       _buildTableCell(device.serialNumber ?? 'N/A'),
       _buildTableCell(device.imei ?? 'N/A'),
-      TableCell(child: Center(child: _buildStatusChip(status, statusColor))),
-      _buildTableCell(formatDateTime(lastSeenTime)),
+      TableCell(child: Center(child: _buildStatusChip(statusText, statusColor))),
+      _buildTableCell(formatDateTime(parseLastSeen(device.lastSeen))),
       _buildTableCell(device.unit ?? 'N/D'),
       _buildTableCell('${device.sector ?? "N/D"} / ${device.floor ?? "N/D"}'),
       if (showActions)
