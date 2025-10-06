@@ -17,7 +17,6 @@ class ManagedDevicesCard extends StatelessWidget {
   final Map<String, dynamic>? currentUser;
   final AuthService authService;
 
-
   const ManagedDevicesCard({
     required this.authService,
     super.key,
@@ -52,32 +51,31 @@ class ManagedDevicesCard extends StatelessWidget {
       'Andar',
     ];
 
-      // Substitua a parte do CSV export no seu managed_devices_card.dart
+    // Substitua a parte do CSV export no seu managed_devices_card.dart
+    final rows = devicesToExport.map((device) {
+      final lastSeenTime = parseLastSeen(device.lastSeen);
+      String status;
+      
+      // LÓGICA ATUALIZADA para CSV usando o getter
+      switch (device.displayStatus) {
+        case DeviceStatusType.collectedByIT:
+          status = 'Recolhido pelo TI';
+          break;
+        case DeviceStatusType.maintenance:
+          status = 'Em Manutenção';
+          break;
+        case DeviceStatusType.online:
+          status = 'Online';
+          break;
+        case DeviceStatusType.unmonitored:
+          status = 'Sem Monitorar';
+          break;
+        default:
+          status = 'Offline';
+          break;
+      }
 
-final rows = devicesToExport.map((device) {
-  final lastSeenTime = parseLastSeen(device.lastSeen);
-  final online = isDeviceOnline(lastSeenTime);
-  final inMaintenance = device.maintenanceStatus ?? false;
-  String status;
-  
-  if (inMaintenance) {
-    // LÓGICA ATUALIZADA para CSV
-    switch (device.maintenanceReason) {
-      case 'collected_by_it':
-        status = 'Recolhido pelo TI';
-        break;
-      case 'maintenance':
-        status = 'Em Manutenção';
-        break;
-      default:
-        // Para compatibilidade com registros antigos
-        status = 'Em Manutenção';
-    }
-  } else {
-    status = online ? 'Online' : 'Offline';
-  }
-
-  return [
+      return [
         device.deviceName,
         device.deviceModel ?? 'N/A',
         device.imei ?? 'N/A',
@@ -88,16 +86,16 @@ final rows = devicesToExport.map((device) {
         device.ipAddress ?? 'N/A',
         device.network ?? 'N/A',
         device.macAddress ?? 'N/A',
-        inMaintenance ? 'Sim' : 'Não',
+        (device.maintenanceStatus ?? false) ? 'Sim' : 'Não',
         device.maintenanceTicket ?? 'N/A',
         device.maintenanceReason ?? 'N/A',
         device.unit ?? 'N/A',
         device.sector ?? 'N/A',
         device.floor ?? 'N/A',
       ]
-      .map((value) => '"${value.toString().replaceAll('"', '""')}"')
-      .join(',');
-}).toList();
+          .map((value) => '"${value.toString().replaceAll('"', '""')}"')
+          .join(',');
+    }).toList();
 
     final csvContent = [headers.join(','), ...rows].join('\n');
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -123,11 +121,26 @@ final rows = devicesToExport.map((device) {
     }
   }
 
-  // CORREÇÃO FINAL baseada na estrutura real dos dados
-
   @override
   Widget build(BuildContext context) {
-    List<Device> filteredDevices = devices;
+    List<Device> filteredDevices = List.from(devices);
+
+    // ALTERAÇÃO: Ordenação para priorizar status "Sem Monitorar"
+    filteredDevices.sort((a, b) {
+      int getPriority(Device device) {
+        if (device.displayStatus == DeviceStatusType.unmonitored) return 0;
+        return 1;
+      }
+
+      final priorityA = getPriority(a);
+      final priorityB = getPriority(b);
+
+      if (priorityA != priorityB) {
+        return priorityA.compareTo(priorityB);
+      }
+      return (a.deviceName ?? '').toLowerCase().compareTo((b.deviceName ?? '').toLowerCase());
+    });
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -173,8 +186,6 @@ final rows = devicesToExport.map((device) {
             ],
           ),
           const Divider(height: 24),
-
-          // Adicionar informação de debug (remova depois de testar)
           if (currentUser != null && currentUser!['role'] == 'user')
             Container(
               padding: const EdgeInsets.all(8),
@@ -189,7 +200,6 @@ final rows = devicesToExport.map((device) {
                 style: TextStyle(color: Colors.blue[700], fontSize: 12),
               ),
             ),
-
           Expanded(
             child: SingleChildScrollView(
               child: Table(
@@ -251,100 +261,108 @@ final rows = devicesToExport.map((device) {
     );
   }
 
-  // Substitua a função _buildDeviceTableRow no seu managed_devices_card.dart
+  // ALTERAÇÃO: Usa o novo enum e getter de status
+  TableRow _buildDeviceTableRow(BuildContext context, Device device) {
+    String statusText;
+    Color statusColor;
 
-TableRow _buildDeviceTableRow(BuildContext context, Device device) {
-  final inMaintenance = device.maintenanceStatus ?? false;
-  String statusText;
-  Color statusColor;
-
-  if (inMaintenance) {
-    // Mantém sua lógica de manutenção que já é ótima
-    switch (device.maintenanceReason) {
-      case 'collected_by_it':
+    switch (device.displayStatus) {
+      case DeviceStatusType.collectedByIT:
         statusText = 'Recolhido pelo TI';
         statusColor = Colors.purple;
         break;
-      case 'maintenance':
+      case DeviceStatusType.maintenance:
         statusText = 'Em Manutenção';
         statusColor = Colors.orange;
         break;
-      default:
-        statusText = 'Em Manutenção';
-        statusColor = Colors.orange;
-    }
-  } else {
-    // NOVA LÓGICA DE STATUS
-    // A prioridade agora é o status que vem do servidor
-    switch (device.status) {
-      case 'online':
+      case DeviceStatusType.online:
         statusText = 'Online';
         statusColor = Colors.green;
         break;
-      case 'Sem Monitorar': // Nosso novo status
+      case DeviceStatusType.unmonitored:
         statusText = 'Sem Monitorar';
-        statusColor = Colors.amber; // Uma nova cor para destacar
+        statusColor = Colors.amber;
         break;
-      case 'offline':
-      default: // Caso padrão
+      default:
         statusText = 'Offline';
         statusColor = Colors.red;
         break;
     }
+
+    return TableRow(
+      children: [
+        _buildClickableDeviceCell(context, device),
+        _buildTableCell(device.deviceModel ?? 'N/A'),
+        _buildTableCell(device.serialNumber ?? 'N/A'),
+        _buildTableCell(device.imei ?? 'N/A'),
+        TableCell(child: Center(child: _buildStatusChip(statusText, statusColor))),
+        _buildTableCell(formatDateTime(parseLastSeen(device.lastSeen))),
+        _buildTableCell(device.unit ?? 'N/D'),
+        _buildTableCell('${device.sector ?? "N/D"} / ${device.floor ?? "N/D"}'),
+        if (showActions)
+          TableCell(
+            verticalAlignment: TableCellVerticalAlignment.middle,
+            child: CommandControls(
+              device: device,
+              token: token!,
+              onCommandExecuted: onDeviceUpdate ?? () {},
+            ),
+          ),
+      ],
+    );
   }
 
-  return TableRow(
-    children: [
-      _buildClickableDeviceCell(context, device),
-      _buildTableCell(device.deviceModel ?? 'N/A'),
-      _buildTableCell(device.serialNumber ?? 'N/A'),
-      _buildTableCell(device.imei ?? 'N/A'),
-      TableCell(child: Center(child: _buildStatusChip(statusText, statusColor))),
-      _buildTableCell(formatDateTime(parseLastSeen(device.lastSeen))),
-      _buildTableCell(device.unit ?? 'N/D'),
-      _buildTableCell('${device.sector ?? "N/D"} / ${device.floor ?? "N/D"}'),
-      if (showActions)
-        TableCell(
-          verticalAlignment: TableCellVerticalAlignment.middle,
-          child: CommandControls(
-            device: device,
-            token: token!,
-            onCommandExecuted: onDeviceUpdate ?? () {},
-          ),
-        ),
-    ],
-  );
-}
-
+  // ALTERAÇÃO: Adicionado ícone de bateria
   Widget _buildClickableDeviceCell(BuildContext context, Device device) {
+    Widget getBatteryIcon(num? batteryLevel) {
+      if (batteryLevel == null) {
+        return const Icon(Icons.battery_unknown, size: 18, color: Colors.grey);
+      }
+      if (batteryLevel <= 20) {
+        return Icon(Icons.battery_alert, size: 18, color: Colors.red[700]);
+      }
+      if (batteryLevel <= 50) {
+        return Icon(Icons.battery_std, size: 18, color: Colors.orange[700]);
+      }
+      return Icon(Icons.battery_full, size: 18, color: Colors.green[700]);
+    }
+
     return TableCell(
       verticalAlignment: TableCellVerticalAlignment.middle,
       child: InkWell(
-        onTap:
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => DeviceDetailScreen(
-                  device: device,
-                  authService: authService, // Pass the required authService parameter
-                ),
-              ),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DeviceDetailScreen(
+              device: device,
+              authService: authService,
             ),
+          ),
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Row(
             children: [
-              Text(
-                device.deviceName ?? 'N/A',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              if (device.battery != null)
-                Text(
-                  'Bateria: ${device.battery}%',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      device.deviceName ?? 'N/A',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (device.battery != null)
+                      Text(
+                        'Bateria: ${device.battery}%',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: 8),
+              getBatteryIcon(device.battery),
             ],
           ),
         ),
