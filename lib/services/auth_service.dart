@@ -49,6 +49,7 @@ class AuthService {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('token', _token!);
         await prefs.setString('user', jsonEncode(_user));
+        print('DEBUG AUTH: Token salvo com sucesso no SharedPreferences!');
         
         return {'success': true};
       } else {
