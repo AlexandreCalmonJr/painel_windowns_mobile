@@ -122,18 +122,20 @@ class _MDMDashboardState extends State<MDMDashboard> {
         // --- FIM DA CORREÇÃO ---
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         _showSnackbar('Erro ao carregar unidades: $e', isError: true);
+      }
     }
   }
 
   Future<void> _loadBssidMappings() async {
     final token = widget.authService.currentToken;
-    if (token == null)
+    if (token == null) {
       return; // Esta linha já garante que o token não é nulo abaixo
+    }
     try {
       // 👇 Adicione o '!' depois de 'token' para corrigir o erro
-      final mappings = await _deviceService.fetchBssidMappings(token!);
+      final mappings = await _deviceService.fetchBssidMappings(token);
       if (mounted) {
         setState(() => bssidMappings = mappings);
       }
@@ -155,8 +157,9 @@ class _MDMDashboardState extends State<MDMDashboard> {
         if (!isInitialLoad) _previousDevices = List.from(_allFetchedDevices);
         setState(() {
           _allFetchedDevices = fetchedDevices;
-          if (!isInitialLoad)
+          if (!isInitialLoad) {
             _checkForAlerts(_previousDevices, _allFetchedDevices);
+          }
           _updateDisplayedDevices();
           errorMessage = null;
         });

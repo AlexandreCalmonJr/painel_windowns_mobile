@@ -83,7 +83,7 @@ class _UnitsTabState extends State<UnitsTab> {
                 final newUnit = Unit(name: name, ipRangeStart: startIp, ipRangeEnd: endIp);
                 String message;
                 if (isEditing) {
-                  message = await _deviceService.updateUnit(widget.token, unit!.name, newUnit);
+                  message = await _deviceService.updateUnit(widget.token, unit.name, newUnit);
                 } else {
                   message = await _deviceService.createUnit(widget.token, newUnit);
                 }
@@ -173,7 +173,7 @@ class _UnitsTabState extends State<UnitsTab> {
                 final newMapping = BssidMapping(macAddressRadio: mac, sector: sector, floor: floor);
                 String message;
                 if (isEditing) {
-                  message = await _deviceService.updateBssidMapping(widget.token, mapping!.macAddressRadio, newMapping);
+                  message = await _deviceService.updateBssidMapping(widget.token, mapping.macAddressRadio, newMapping);
                 } else {
                   message = await _deviceService.createBssidMapping(widget.token, newMapping);
                 }
@@ -229,8 +229,9 @@ class _UnitsTabState extends State<UnitsTab> {
     final extension = result.files.single.extension?.toLowerCase();
 
     try {
-      if (extension == 'json') await _importFromJson(file);
-      else if (extension == 'xlsx') await _importFromExcel(file);
+      if (extension == 'json') {
+        await _importFromJson(file);
+      } else if (extension == 'xlsx') await _importFromExcel(file);
       else throw Exception('Formato de arquivo não suportado.');
       
       _showSnackbar('Dados importados com sucesso! Atualizando...');
@@ -320,11 +321,15 @@ class _UnitsTabState extends State<UnitsTab> {
     final excel = xls.Excel.createExcel();
     final unitSheet = excel['Unidades'];
     unitSheet.appendRow(['Nome da Unidade', 'IP Inicial', 'IP Final']);
-    for (final unit in widget.units) unitSheet.appendRow([unit.name, unit.ipRangeStart, unit.ipRangeEnd]);
+    for (final unit in widget.units) {
+      unitSheet.appendRow([unit.name, unit.ipRangeStart, unit.ipRangeEnd]);
+    }
     
     final bssidSheet = excel['Mapeamentos BSSID'];
     bssidSheet.appendRow(['BSSID', 'Setor', 'Andar']);
-    for (final m in widget.bssidMappings) bssidSheet.appendRow([m.macAddressRadio, m.sector, m.floor]);
+    for (final m in widget.bssidMappings) {
+      bssidSheet.appendRow([m.macAddressRadio, m.sector, m.floor]);
+    }
     
     excel.delete('Sheet1');
     final fileBytes = excel.save();
@@ -336,8 +341,9 @@ class _UnitsTabState extends State<UnitsTab> {
         final directory = await getApplicationDocumentsDirectory();
         final path = '${directory.path}${Platform.pathSeparator}${fileName}_${DateTime.now().millisecondsSinceEpoch}.$extension';
         final file = File(path);
-        if (content is String) await file.writeAsString(content);
-        else if (content is List<int>) await file.writeAsBytes(content);
+        if (content is String) {
+          await file.writeAsString(content);
+        } else if (content is List<int>) await file.writeAsBytes(content);
         _showSnackbar('Arquivo salvo em: $path');
     } catch (e) {
         _showSnackbar('Erro ao salvar o arquivo: $e', isError: true);

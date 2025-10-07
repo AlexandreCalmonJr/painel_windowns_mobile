@@ -11,10 +11,10 @@ class DeviceDetailScreen extends StatefulWidget {
   final AuthService authService;
 
   const DeviceDetailScreen({
-    Key? key,
+    super.key,
     required this.device,
     required this.authService,
-  }) : super(key: key);
+  });
 
   @override
   State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();

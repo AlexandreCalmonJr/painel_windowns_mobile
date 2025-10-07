@@ -95,7 +95,7 @@ class _UsersTabState extends State<UsersTab> {
                     ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: selectedRole,
+                    initialValue: selectedRole,
                     decoration: const InputDecoration(labelText: 'Papel', prefixIcon: Icon(Icons.security), border: OutlineInputBorder()),
                     items: const [
                       DropdownMenuItem(value: 'user', child: Text('Utilizador')),
@@ -147,7 +147,7 @@ class _UsersTabState extends State<UsersTab> {
 
                 Map<String, dynamic> result;
                 if (isEditing) {
-                  result = await widget.authService.updateUser(user!['_id'], userData);
+                  result = await widget.authService.updateUser(user['_id'], userData);
                 } else {
                   result = await widget.authService.createUser(userData);
                 }

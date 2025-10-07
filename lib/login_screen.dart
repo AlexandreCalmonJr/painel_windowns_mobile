@@ -282,7 +282,7 @@ class _LoginScreenState extends State<LoginScreen>
                           dividerColor: Colors.transparent,
                           indicatorSize: TabBarIndicatorSize.tab,
                           splashFactory: NoSplash.splashFactory,
-                          overlayColor: MaterialStateProperty.all(Colors.transparent),
+                          overlayColor: WidgetStateProperty.all(Colors.transparent),
                           tabs: const [
                             Tab(
                               icon: Icon(Icons.login, size: 20),
@@ -300,7 +300,7 @@ class _LoginScreenState extends State<LoginScreen>
                       const SizedBox(height: 32),
 
                       // Conteúdo das tabs
-                      Container(
+                      SizedBox(
                         height: 280,
                         child: TabBarView(
                           controller: _tabController,
