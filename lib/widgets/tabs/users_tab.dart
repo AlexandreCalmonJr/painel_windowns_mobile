@@ -95,7 +95,7 @@ class _UsersTabState extends State<UsersTab> {
                     ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedRole,
+                    value: selectedRole,
                     decoration: const InputDecoration(labelText: 'Papel', prefixIcon: Icon(Icons.security), border: OutlineInputBorder()),
                     items: const [
                       DropdownMenuItem(value: 'user', child: Text('Utilizador')),
